@@ -131,8 +131,14 @@ internal class Program
 			}
 			excelOperations.FormatCells(1, 1, 2, array.Count(), bold: true, italic: false, Color.PowderBlue.ToArgb());
 			int num4 = 3;
+			Dictionary<string, int> dictionary = new Dictionary<string, int>();
 			foreach (MdpBuilder item in list)
 			{
+				string key = item.ShemeNum.Trim(new char[1] { ' ' });
+				if (!dictionary.ContainsKey(key))
+				{
+					dictionary.Add(key, num4);
+				}
 				excelOperations.setVal(num4, 1, item.ShemeNum);
 				excelOperations.Format(num4, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 				excelOperations.setVal(num4, 2, item.ShemeName);
@@ -260,8 +266,13 @@ internal class Program
 				num4 = num5;
 			}
 			excelOperations.Font("Liberation Serif", num12);
+			for (int n = 1; n <= array.Count(); n++)
+			{
+				excelOperations.AutoFitWithMaxWidth(n, array[n - 1]);
+			}
 			excelOperations.Borders(1, 1, num4 - 1, array.Count());
 			excelOperations.GroupRowsPosition();
+			excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", "new", dictionary);
 			string text14 = Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_modify.xlsx");
 			excelOperations.Save(text14);
 			Console.WriteLine("Файл успешно обработан и сохранен: " + text14);

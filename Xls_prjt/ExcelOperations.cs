@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
 
@@ -350,6 +352,16 @@ public class ExcelOperations
 		}
 	}
 
+	public void AutoFitWithMaxWidth(int col, int maxWidth)
+	{
+		ExcelColumn excelColumn = _ws.Column(col);
+		excelColumn.AutoFit();
+		if (excelColumn.Width > maxWidth)
+		{
+			excelColumn.Width = maxWidth;
+		}
+	}
+
 	public void HideColumn(int col)
 	{
 		_ws.Column(col).Hidden = true;
@@ -358,6 +370,49 @@ public class ExcelOperations
 	public void Height(int row, int height)
 	{
 		_ws.Row(row).Height = height;
+	}
+
+	public void UpdateSummarySheetHyperlinks(string summarySheetName, string targetSheetName, Dictionary<string, int> schemeRows)
+	{
+		ExcelWorksheet excelWorksheet = _excel.Workbook.Worksheets[summarySheetName];
+		if (excelWorksheet == null || excelWorksheet.Dimension == null)
+		{
+			return;
+		}
+		int num = 0;
+		for (int i = 1; i <= excelWorksheet.Dimension.End.Row; i++)
+		{
+			string text = excelWorksheet.Cells[i, 1].Value?.ToString()?.Trim() ?? "";
+			if (text.Equals("Ремонтные схемы:", StringComparison.OrdinalIgnoreCase))
+			{
+				num = i + 1;
+				break;
+			}
+		}
+		if (num == 0)
+		{
+			return;
+		}
+		for (int j = num; j <= excelWorksheet.Dimension.End.Row; j++)
+		{
+			string text2 = excelWorksheet.Cells[j, 1].Value?.ToString()?.Trim() ?? "";
+			if (text2.Length == 0)
+			{
+				continue;
+			}
+			Match match = Regex.Match(text2, "^(\\d+)\\.");
+			if (!match.Success)
+			{
+				continue;
+			}
+			string key = match.Groups[1].Value;
+			if (!schemeRows.TryGetValue(key, out var value))
+			{
+				continue;
+			}
+			ExcelRange excelRange = excelWorksheet.Cells[j, 1];
+			excelRange.Hyperlink = new ExcelHyperLink($"'{targetSheetName}'!B{value}", text2);
+		}
 	}
 
 	public int ValToColor(dynamic value)
