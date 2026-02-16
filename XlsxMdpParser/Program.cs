@@ -280,6 +280,8 @@ internal class Program
 			excelOperations.Borders(1, 1, num4 - 1, array.Count());
 			excelOperations.GroupRowsPosition();
 			excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", "new", dictionary);
+			excelOperations.ConfigureSheetForPrint("Обшая информация о сечении");
+			excelOperations.ConfigureSheetForPrint("new", repeatTopTwoRows: true);
 			string text14 = Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_modify.xlsx");
 			excelOperations.Save(text14);
 			Console.WriteLine("Файл успешно обработан и сохранен: " + text14);

@@ -451,6 +451,30 @@ public class ExcelOperations
 		}
 	}
 
+	public void ConfigureSheetForPrint(string sheetName, bool repeatTopTwoRows = false)
+	{
+		ExcelWorksheet excelWorksheet = _excel.Workbook.Worksheets[sheetName];
+		if (excelWorksheet == null)
+		{
+			return;
+		}
+		excelWorksheet.PrinterSettings.Orientation = eOrientation.Landscape;
+		excelWorksheet.PrinterSettings.PaperSize = ePaperSize.A4;
+		excelWorksheet.PrinterSettings.FitToPage = true;
+		excelWorksheet.PrinterSettings.FitToWidth = 1;
+		excelWorksheet.PrinterSettings.FitToHeight = 0;
+		excelWorksheet.PrinterSettings.HorizontalCentered = true;
+		excelWorksheet.PrinterSettings.VerticalCentered = false;
+		if (excelWorksheet.Dimension != null)
+		{
+			excelWorksheet.PrinterSettings.PrintArea = excelWorksheet.Cells[excelWorksheet.Dimension.Address];
+		}
+		if (repeatTopTwoRows)
+		{
+			excelWorksheet.PrinterSettings.RepeatRows = excelWorksheet.Cells["1:2"];
+		}
+	}
+
 	public int ValToColor(dynamic value)
 	{
 		int result = Color.YellowGreen.ToArgb();
