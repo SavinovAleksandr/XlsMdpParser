@@ -159,6 +159,18 @@ internal class Program
 					List<MDP> list3 = tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != "").ToList();
 					List<MDP> list4 = list3.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
 					List<MDP> list5 = list3.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+					if (list5.Count <= 1)
+					{
+						list4.Clear();
+					}
+					else if (list4.Count == 0)
+					{
+						list4.Add(new MDP
+						{
+							Num = -1,
+							Criteria = "Минимальное из:"
+						});
+					}
 					List<MDP> list6 = list4.Concat(list5).ToList();
 					for (int l = 0; l < list6.Count; l++)
 					{
@@ -169,6 +181,18 @@ internal class Program
 					List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != "").ToList();
 					List<MDP> list8 = list7.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
 					List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+					if (list9.Count <= 1)
+					{
+						list8.Clear();
+					}
+					else if (list8.Count == 0)
+					{
+						list8.Add(new MDP
+						{
+							Num = -1,
+							Criteria = "Минимальное из:"
+						});
+					}
 					List<MDP> list10 = list8.Concat(list9).ToList();
 					for (int m = 0; m < list10.Count; m++)
 					{
@@ -338,6 +362,7 @@ internal class Program
 
 	public static string CellModifyString(string text)
 	{
+		text = Regex.Replace(text, "\\bMIN\\b", "min");
 		text = text.Replace("-", " - ").Replace("+", " + ").Replace(",", ", ")
 			.Replace("  ", " ")
 			.Replace("==", "=")
