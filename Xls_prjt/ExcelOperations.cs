@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
-using System.Reflection;
 using System.Text.RegularExpressions;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
@@ -219,7 +218,7 @@ public class ExcelOperations
 		}
 		else
 		{
-			_excel.SaveAs(new FileInfo(Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "", "tmp.xlsx")));
+			_excel.SaveAs(new FileInfo(Path.Combine(AppContext.BaseDirectory, "tmp.xlsx")));
 		}
 	}
 
