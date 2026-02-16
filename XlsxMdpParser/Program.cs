@@ -142,12 +142,15 @@ internal class Program
 				}
 				excelOperations.setVal(num4, 1, item.ShemeNum);
 				excelOperations.Format(num4, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-				excelOperations.setVal(num4, 2, item.ShemeName);
+				string text3 = GetSchemeHeaderLine(item.ShemeName);
+				excelOperations.setVal(num4, 2, text3, wrap: false);
 				excelOperations.Merge(num4, 2, num4, array.Count());
 				excelOperations.Format(num4, 2, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Center);
+				excelOperations.Wrap(num4, 2, wrap: false);
 				excelOperations.FormatCells(num4, 1, num4, array.Count(), bold: false, italic: false, Color.MistyRose.ToArgb());
-				double value = Math.Ceiling(2.5 * (double)num12 * (double)(item.ShemeName.Length / array.Sum((int x) => x)));
-				excelOperations.Height(num4, Math.Max(15, Convert.ToInt32(value)));
+				int textWidth = array.Skip(1).Sum();
+				int rowHeight = EstimateMergedRowHeight(text3, textWidth, num12);
+				excelOperations.Height(num4, Math.Max(20, rowHeight));
 				int num5 = num4 + 1;
 				excelOperations.setVal(num5, 1, item.ShemeNum);
 				excelOperations.Merge(num5, 1, num5 + item.TnvList.Count - 1, 1);
@@ -389,6 +392,34 @@ internal class Program
 			.Replace("*", "·");
 		BracketNode node = Parse(text);
 		return Reconstruct(node) ?? "";
+	}
+
+	private static int EstimateMergedRowHeight(string text, int mergedWidth, int fontSize)
+	{
+		string[] array = (text ?? "").Replace("_x000A_", "\n").Split('\n');
+		int num = Math.Max(20, (int)Math.Round((double)mergedWidth * 1.6));
+		int num2 = 0;
+		foreach (string text2 in array)
+		{
+			int num3 = Math.Max(1, text2.TrimEnd().Length);
+			num2 += Math.Max(1, (int)Math.Ceiling((double)num3 / (double)num));
+		}
+		int num4 = Math.Max(15, (int)Math.Round(fontSize * 1.5));
+		return num2 * num4 + 2;
+	}
+
+	private static string GetSchemeHeaderLine(string shemeName)
+	{
+		string[] array = (shemeName ?? "").Replace("_x000A_", "\n").Split('\n');
+		foreach (string text in array)
+		{
+			string text2 = text.Trim();
+			if (!string.IsNullOrEmpty(text2))
+			{
+				return text2;
+			}
+		}
+		return "";
 	}
 
 	public static bool AreBracketsBalanced(string input)
