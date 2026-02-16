@@ -69,6 +69,11 @@ public class ExcelOperations
 		_ws.OutLineSummaryBelow = param;
 	}
 
+	public void FreezeRows(int rowCount)
+	{
+		_ws.View.FreezePanes(rowCount + 1, 1);
+	}
+
 	public void GroupRows(int i, int j, int level = 1, bool hide = true)
 	{
 		_ws.Rows[i, j].OutlineLevel = level;

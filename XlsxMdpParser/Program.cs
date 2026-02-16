@@ -123,6 +123,7 @@ internal class Program
 			excelOperations.Format(2, 11, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 			excelOperations.setVal(2, 12, "АДП");
 			excelOperations.Format(2, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+			excelOperations.FreezeRows(2);
 			if (!flag)
 			{
 				excelOperations.HideColumn(5);
