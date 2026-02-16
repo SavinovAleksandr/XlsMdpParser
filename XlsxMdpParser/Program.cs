@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using OfficeOpenXml.Style;
 using Xls_prjt;
 
@@ -22,6 +23,16 @@ internal class Program
 			string text2 = text.Trim(new char[1] { '"' });
 			Console.WriteLine("Получен путь: " + text2);
 			ExcelOperations excelOperations = new ExcelOperations(text2, 1);
+			bool flag = IsMdpPaLayout(excelOperations);
+			int mdpNoPaCol = 5;
+			int mdpPaCol = flag ? 6 : (-1);
+			int adpCol = flag ? 7 : 6;
+			int mdpNoPaCriteriaCol = 8;
+			int mdpPaCriteriaCol = flag ? 9 : (-1);
+			int adpCriteriaCol = flag ? 11 : 7;
+			int mdpNoPaDopCol = 12;
+			int mdpPaDopCol = flag ? 13 : (-1);
+			int adpDopCol = 14;
 			List<MdpBuilder> list = new List<MdpBuilder>();
 			for (int i = 4; i <= excelOperations.LastColumnRow(); i++)
 			{
@@ -32,33 +43,39 @@ internal class Program
 				string str = excelOperations.getStr(i, 3);
 				string str2 = excelOperations.getStr(i, 2);
 				string text3 = excelOperations.MergedCells(i, 3);
-				int num = Convert.ToInt32(text3.Split(new char[1] { ':' })[0].Substring(1));
-				int num2 = Convert.ToInt32(text3.Split(new char[1] { ':' })[1].Substring(1));
+				int num10 = Convert.ToInt32(text3.Split(new char[1] { ':' })[0].Substring(1));
+				int num11 = Convert.ToInt32(text3.Split(new char[1] { ':' })[1].Substring(1));
 				List<TNV> list2 = new List<TNV>();
-				for (int j = num; j <= num2; j++)
+				for (int j = num10; j <= num11; )
 				{
-					bool flag = excelOperations.getStr(j, 4) != "";
-					int bRow = j;
-					for (; j < num2 && (!flag || excelOperations.getStr(j + 1, 4) == ""); j++)
+					while (j <= num11 && string.IsNullOrWhiteSpace(excelOperations.getStr(j, 4)))
 					{
-						if (excelOperations.getStr(j + 1, 6).Trim(new char[1] { ' ' }).Equals("Минимальное из:"))
-						{
-							break;
-						}
+						j++;
+					}
+					if (j > num11)
+					{
+						break;
+					}
+					int bRow = j;
+					int eRow = j;
+					while (eRow < num11 && string.IsNullOrWhiteSpace(excelOperations.getStr(eRow + 1, 4)))
+					{
+						eRow++;
 					}
 					list2.Add(new TNV
 					{
-						Tnv = ReadLine(excelOperations, bRow, j, 4),
-						MdpNoPA = ReadLines(excelOperations, bRow, j, 5, modify: true),
-						MdpPa = ReadLines(excelOperations, bRow, j, 6, modify: true),
-						Adp = ReadLine(excelOperations, bRow, j, 7),
-						MdpNoPaCriteria = ReadLines(excelOperations, bRow, j, 8),
-						MdpPaCriteria = ReadLines(excelOperations, bRow, j, 9),
-						AdpCriteria = ReadLine(excelOperations, bRow, j, 11),
-						MdpNoPaDop = ReadDopLines(excelOperations, bRow, j, 12),
-						MdpPaDop = ReadDopLines(excelOperations, bRow, j, 13),
-						AdpDop = ReadDopLines(excelOperations, bRow, j, 14)
+						Tnv = ReadLine(excelOperations, bRow, eRow, 4),
+						MdpNoPA = ReadLines(excelOperations, bRow, eRow, mdpNoPaCol, modify: true),
+						MdpPa = ((mdpPaCol != -1) ? ReadLines(excelOperations, bRow, eRow, mdpPaCol, modify: true) : new List<MDP>()),
+						Adp = ReadLine(excelOperations, bRow, eRow, adpCol),
+						MdpNoPaCriteria = ReadLines(excelOperations, bRow, eRow, mdpNoPaCriteriaCol),
+						MdpPaCriteria = ((mdpPaCriteriaCol != -1) ? ReadLines(excelOperations, bRow, eRow, mdpPaCriteriaCol) : new List<MDP>()),
+						AdpCriteria = ReadLine(excelOperations, bRow, eRow, adpCriteriaCol),
+						MdpNoPaDop = ReadDopLines(excelOperations, bRow, eRow, mdpNoPaDopCol),
+						MdpPaDop = ((mdpPaDopCol != -1) ? ReadDopLines(excelOperations, bRow, eRow, mdpPaDopCol) : new List<string>()),
+						AdpDop = ReadDopLines(excelOperations, bRow, eRow, adpDopCol)
 					});
+					j = eRow + 1;
 				}
 				list.Add(new MdpBuilder
 				{
@@ -68,7 +85,7 @@ internal class Program
 				});
 			}
 			excelOperations.AddList("new");
-			int num3 = 10;
+			int num12 = 10;
 			int[] array = new int[12]
 			{
 				7, 40, 11, 80, 120, 30, 50, 50, 30, 25,
@@ -106,6 +123,12 @@ internal class Program
 			excelOperations.Format(2, 11, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 			excelOperations.setVal(2, 12, "АДП");
 			excelOperations.Format(2, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+			if (!flag)
+			{
+				excelOperations.HideColumn(5);
+				excelOperations.HideColumn(8);
+				excelOperations.HideColumn(11);
+			}
 			excelOperations.FormatCells(1, 1, 2, array.Count(), bold: true, italic: false, Color.PowderBlue.ToArgb());
 			int num4 = 3;
 			foreach (MdpBuilder item in list)
@@ -116,7 +139,7 @@ internal class Program
 				excelOperations.Merge(num4, 2, num4, array.Count());
 				excelOperations.Format(num4, 2, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Center);
 				excelOperations.FormatCells(num4, 1, num4, array.Count(), bold: false, italic: false, Color.MistyRose.ToArgb());
-				double value = Math.Ceiling(2.5 * (double)num3 * (double)(item.ShemeName.Length / array.Sum((int x) => x)));
+				double value = Math.Ceiling(2.5 * (double)num12 * (double)(item.ShemeName.Length / array.Sum((int x) => x)));
 				excelOperations.Height(num4, Math.Max(15, Convert.ToInt32(value)));
 				int num5 = num4 + 1;
 				excelOperations.setVal(num5, 1, item.ShemeNum);
@@ -153,7 +176,7 @@ internal class Program
 					foreach (MDP item4 in tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != ""))
 					{
 						string text5 = ((item4 == tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-						text4 = text4 + $"{item4.Num}) {item4.Criteria}" + text5;
+						text4 = text4 + ((item4.Num != -1) ? $"{item4.Num}) {item4.Criteria}" : item4.Criteria) + text5;
 					}
 					excelOperations.setVal(num5, 7, text4);
 					excelOperations.Format(num5, 7, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
@@ -162,7 +185,7 @@ internal class Program
 					foreach (MDP item5 in tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != ""))
 					{
 						string text7 = ((item5 == tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-						text6 = text6 + $"{item5.Num}) {item5.Criteria}" + text7;
+						text6 = text6 + ((item5.Num != -1) ? $"{item5.Num}) {item5.Criteria}" : item5.Criteria) + text7;
 					}
 					excelOperations.setVal(num5, 8, text6);
 					excelOperations.Format(num5, 8, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
@@ -202,7 +225,7 @@ internal class Program
 				excelOperations.GroupRows(num4 + 1, num5 - 1, 1, hide: false);
 				num4 = num5;
 			}
-			excelOperations.Font("Liberation Serif", num3);
+			excelOperations.Font("Liberation Serif", num12);
 			excelOperations.Borders(1, 1, num4 - 1, array.Count());
 			excelOperations.GroupRowsPosition();
 			string text14 = Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_modify.xlsx");
@@ -216,6 +239,13 @@ internal class Program
 		}
 		Console.WriteLine("");
 		Console.ReadKey();
+	}
+
+	private static bool IsMdpPaLayout(ExcelOperations ex)
+	{
+		string str = ex.getStr(1, 6).ToLowerInvariant();
+		string str2 = ex.getStr(2, 8).ToLowerInvariant();
+		return str.Contains("с па") || str2.Contains("с па");
 	}
 
 	public static string ReadLine(ExcelOperations ex, int bRow, int eRow, int col)
@@ -251,26 +281,37 @@ internal class Program
 		for (int i = bRow; i <= eRow; i++)
 		{
 			string text = ex.getStr(i, col).Trim(new char[1] { ' ' });
-			if (!text.Equals("Минимальное из") && text != "" && text != " ")
+			if (text != "" && text != " ")
 			{
-				int num = text.IndexOf(' ');
-				if (num > 0 && text[num - 1] == ')')
-				{
-					string value = text.Substring(0, num - 1);
-					string criteria = (modify ? CellModifyString(text.Substring(num + 1)) : text.Substring(num + 1));
-					list.Add(new MDP
-					{
-						Num = Convert.ToInt32(value),
-						Criteria = criteria
-					});
-				}
-				else
+				if (text.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
 				{
 					list.Add(new MDP
 					{
 						Num = -1,
 						Criteria = text
 					});
+				}
+				else
+				{
+					Match match = Regex.Match(text, "^(-?\\d+)\\)\\s*(.*)$");
+					if (match.Success)
+					{
+						int num = Convert.ToInt32(match.Groups[1].Value);
+						string text2 = match.Groups[2].Value;
+						list.Add(new MDP
+						{
+							Num = num,
+							Criteria = (modify ? CellModifyString(text2) : text2)
+						});
+					}
+					else
+					{
+						list.Add(new MDP
+						{
+							Num = -1,
+							Criteria = (modify ? CellModifyString(text) : text)
+						});
+					}
 				}
 			}
 			else
