@@ -219,7 +219,7 @@ internal class Program
 			excelOperations.Font("Liberation Serif", num3);
 			excelOperations.Borders(1, 1, num4 - 1, array.Count());
 			excelOperations.GroupRowsPosition();
-			excelOperations.Save(Path.GetDirectoryName(text2) + "\\" + Path.GetFileNameWithoutExtension(text2) + "_modify.xlsx");
+			excelOperations.Save(Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_modify.xlsx"));
 		}
 		else
 		{

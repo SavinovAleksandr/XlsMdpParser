@@ -187,7 +187,7 @@ public class ExcelOperations
 		}
 		else
 		{
-			_excel.SaveAs(new FileInfo(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) + "\\tmp.xlsx"));
+			_excel.SaveAs(new FileInfo(Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "", "tmp.xlsx")));
 		}
 	}
 
