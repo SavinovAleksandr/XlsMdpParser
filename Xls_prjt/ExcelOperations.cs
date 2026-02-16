@@ -82,7 +82,24 @@ public class ExcelOperations
 	public void CellRichText(int i, int j, string val, string prefix)
 	{
 		ExcelRange excelRange = _ws.Cells[i, j];
-		excelRange.RichText.Add(prefix);
+		ExcelRichText excelRichText2 = excelRange.RichText.Add(prefix);
+		excelRichText2.Color = Color.Black;
+		excelRichText2.Bold = false;
+		if (val.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
+		{
+			string text = "Минимальное из:";
+			ExcelRichText excelRichText = excelRange.RichText.Add(text);
+			excelRichText.Color = Color.Green;
+			excelRichText.Bold = true;
+			string text2 = val.Substring(Math.Min(text.Length, val.Length));
+			if (text2.Length > 0)
+			{
+				ExcelRichText excelRichText3 = excelRange.RichText.Add(text2);
+				excelRichText3.Color = Color.Black;
+				excelRichText3.Bold = false;
+			}
+			return;
+		}
 		string[] array = val.Split('|', ' ');
 		foreach (string text in array)
 		{

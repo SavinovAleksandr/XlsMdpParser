@@ -27,9 +27,9 @@ internal class Program
 			int mdpNoPaCol = 5;
 			int mdpPaCol = flag ? 6 : (-1);
 			int adpCol = flag ? 7 : 6;
-			int mdpNoPaCriteriaCol = 8;
+			int mdpNoPaCriteriaCol = flag ? 8 : 7;
 			int mdpPaCriteriaCol = flag ? 9 : (-1);
-			int adpCriteriaCol = flag ? 11 : 7;
+			int adpCriteriaCol = flag ? 11 : 8;
 			int mdpNoPaDopCol = 12;
 			int mdpPaDopCol = flag ? 13 : (-1);
 			int adpDopCol = 14;
@@ -156,15 +156,25 @@ internal class Program
 					excelOperations.Format(num5, 4, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
 					excelOperations.setVal(num5, 5, "");
 					excelOperations.Format(num5, 5, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
-					foreach (MDP item2 in tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != ""))
+					List<MDP> list3 = tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != "").ToList();
+					List<MDP> list4 = list3.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+					List<MDP> list5 = list3.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+					List<MDP> list6 = list4.Concat(list5).ToList();
+					for (int l = 0; l < list6.Count; l++)
 					{
-						bool flag2 = item2 == tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault();
-						excelOperations.CellRichText(num5, 4, (!flag2) ? (item2.Criteria + Environment.NewLine) : item2.Criteria, (item2.Num != -1) ? $"{item2.Num}) " : "");
+						MDP mDP = list6[l];
+						bool flag2 = l == list6.Count - 1;
+						excelOperations.CellRichText(num5, 4, (!flag2) ? (mDP.Criteria + Environment.NewLine) : mDP.Criteria, (mDP.Num != -1) ? $"{mDP.Num}) " : "");
 					}
-					foreach (MDP item3 in tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != ""))
+					List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != "").ToList();
+					List<MDP> list8 = list7.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+					List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+					List<MDP> list10 = list8.Concat(list9).ToList();
+					for (int m = 0; m < list10.Count; m++)
 					{
-						bool flag3 = item3 == tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault();
-						excelOperations.CellRichText(num5, 5, (!flag3) ? (item3.Criteria + Environment.NewLine) : item3.Criteria, (item3.Num != -1) ? $"{item3.Num}) " : "");
+						MDP mDP2 = list10[m];
+						bool flag3 = m == list10.Count - 1;
+						excelOperations.CellRichText(num5, 5, (!flag3) ? (mDP2.Criteria + Environment.NewLine) : mDP2.Criteria, (mDP2.Num != -1) ? $"{mDP2.Num}) " : "");
 					}
 					if (tnv.Adp != "")
 					{
@@ -255,7 +265,7 @@ internal class Program
 		{
 			if (ex.getStr(i, col) != "" && ex.getStr(i, col) != " ")
 			{
-				result = ex.getStr(i, col).Trim(new char[1] { ' ' });
+				result = ex.getStr(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
 			}
 		}
 		return result;
@@ -266,7 +276,7 @@ internal class Program
 		List<string> list = new List<string>();
 		for (int i = bRow; i <= eRow; i++)
 		{
-			string text = ex.getStr(i, col).Trim(new char[1] { ' ' });
+			string text = ex.getStr(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
 			if (text != "" && text != " ")
 			{
 				list.Add(text);
@@ -280,7 +290,7 @@ internal class Program
 		List<MDP> list = new List<MDP>();
 		for (int i = bRow; i <= eRow; i++)
 		{
-			string text = ex.getStr(i, col).Trim(new char[1] { ' ' });
+			string text = ex.getStr(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
 			if (text != "" && text != " ")
 			{
 				if (text.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
