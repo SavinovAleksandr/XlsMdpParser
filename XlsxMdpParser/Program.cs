@@ -270,6 +270,12 @@ internal class Program
 			{
 				excelOperations.AutoFitWithMaxWidth(n, array[n - 1]);
 			}
+			if (!flag)
+			{
+				excelOperations.HideColumn(5);
+				excelOperations.HideColumn(8);
+				excelOperations.HideColumn(11);
+			}
 			excelOperations.Borders(1, 1, num4 - 1, array.Count());
 			excelOperations.GroupRowsPosition();
 			excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", "new", dictionary);

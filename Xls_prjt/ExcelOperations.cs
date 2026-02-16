@@ -356,10 +356,41 @@ public class ExcelOperations
 	{
 		ExcelColumn excelColumn = _ws.Column(col);
 		excelColumn.AutoFit();
-		if (excelColumn.Width > maxWidth)
+		double num = excelColumn.Width;
+		double num2 = EstimateWidthByText(col);
+		double width = Math.Max(num, num2);
+		if (width > maxWidth)
 		{
-			excelColumn.Width = maxWidth;
+			width = maxWidth;
 		}
+		excelColumn.Width = Math.Max(4.0, width);
+	}
+
+	private double EstimateWidthByText(int col)
+	{
+		if (_ws.Dimension == null)
+		{
+			return 8.0;
+		}
+		int num = 0;
+		for (int i = 1; i <= _ws.Dimension.End.Row; i++)
+		{
+			string text = _ws.Cells[i, col].Text ?? "";
+			if (text.Length == 0)
+			{
+				continue;
+			}
+			string[] array = text.Replace("_x000A_", "\n").Split('\n');
+			foreach (string text2 in array)
+			{
+				int length = text2.TrimEnd().Length;
+				if (length > num)
+				{
+					num = length;
+				}
+			}
+		}
+		return (double)num * 1.1 + 2.0;
 	}
 
 	public void HideColumn(int col)
