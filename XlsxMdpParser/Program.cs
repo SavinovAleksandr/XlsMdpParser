@@ -39,7 +39,7 @@ internal class Program
 				{
 					bool flag = excelOperations.getStr(j, 4) != "";
 					int bRow = j;
-					for (; j <= num2 && (!flag || !(excelOperations.getStr(j + 1, 4) != "")); j++)
+					for (; j < num2 && (!flag || excelOperations.getStr(j + 1, 4) == ""); j++)
 					{
 						if (excelOperations.getStr(j + 1, 6).Trim(new char[1] { ' ' }).Equals("Минимальное из:"))
 						{
@@ -136,26 +136,12 @@ internal class Program
 					foreach (MDP item2 in tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != ""))
 					{
 						bool flag2 = item2 == tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault();
-						if (item2.Criteria.Equals("Минимальное из:"))
-						{
-							excelOperations.setVal(num5, 4, item2.Criteria + Environment.NewLine);
-						}
-						else
-						{
-							excelOperations.CellRichText(num5, 4, (!flag2) ? (item2.Criteria + Environment.NewLine) : item2.Criteria, (item2.Num != -1) ? $"{item2.Num}) " : "");
-						}
+						excelOperations.CellRichText(num5, 4, (!flag2) ? (item2.Criteria + Environment.NewLine) : item2.Criteria, (item2.Num != -1) ? $"{item2.Num}) " : "");
 					}
 					foreach (MDP item3 in tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != ""))
 					{
 						bool flag3 = item3 == tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault();
-						if (item3.Criteria.Equals("Минимальное из:"))
-						{
-							excelOperations.setVal(num5, 5, item3.Criteria + Environment.NewLine);
-						}
-						else
-						{
-							excelOperations.CellRichText(num5, 5, (!flag3) ? (item3.Criteria + Environment.NewLine) : item3.Criteria, (item3.Num != -1) ? $"{item3.Num}) " : "");
-						}
+						excelOperations.CellRichText(num5, 5, (!flag3) ? (item3.Criteria + Environment.NewLine) : item3.Criteria, (item3.Num != -1) ? $"{item3.Num}) " : "");
 					}
 					if (tnv.Adp != "")
 					{
@@ -219,7 +205,10 @@ internal class Program
 			excelOperations.Font("Liberation Serif", num3);
 			excelOperations.Borders(1, 1, num4 - 1, array.Count());
 			excelOperations.GroupRowsPosition();
-			excelOperations.Save(Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_modify.xlsx"));
+			string text14 = Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_modify.xlsx");
+			excelOperations.Save(text14);
+			Console.WriteLine("Файл успешно обработан и сохранен: " + text14);
+			Console.WriteLine("Работа программы успешно завершена.");
 		}
 		else
 		{

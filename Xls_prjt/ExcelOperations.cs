@@ -39,6 +39,10 @@ public class ExcelOperations
 
 	public void AddList(string list)
 	{
+		if (_excel.Workbook.Worksheets[list] != null)
+		{
+			_excel.Workbook.Worksheets.Delete(list);
+		}
 		_ws = _excel.Workbook.Worksheets.Add(list);
 		_ws.Cells["A1:XFD1048576"].Style.WrapText = true;
 	}
