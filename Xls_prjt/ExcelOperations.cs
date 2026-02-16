@@ -162,6 +162,10 @@ public class ExcelOperations
 
 	public void CellComment(int i, int j, string str)
 	{
+		if (string.IsNullOrWhiteSpace(str))
+		{
+			return;
+		}
 		ExcelRange excelRange = _ws.Cells[i, j];
 		ExcelComment excelComment = excelRange.AddComment(str);
 		excelComment.AutoFit = true;
