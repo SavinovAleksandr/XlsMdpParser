@@ -14,13 +14,11 @@ internal class Program
 {
 	private static void Main(string[] args)
 	{
-		Console.InputEncoding = Encoding.Default;
-		Console.OutputEncoding = Encoding.Default;
 		Console.WriteLine("Перетащите файл в это окно и нажмите Enter:");
-		string text = Console.ReadLine();
+		string text = GetInputPath(args);
 		if (!string.IsNullOrWhiteSpace(text))
 		{
-			string text2 = text.Trim(new char[1] { '"' });
+			string text2 = NormalizeInputPath(text);
 			Console.WriteLine("Получен путь: " + text2);
 			ExcelOperations excelOperations = new ExcelOperations(text2, 1);
 			bool flag = IsMdpPaLayout(excelOperations);
@@ -296,6 +294,32 @@ internal class Program
 		}
 		Console.WriteLine("");
 		Console.ReadKey();
+	}
+
+	private static string GetInputPath(string[] args)
+	{
+		if (args != null && args.Length != 0)
+		{
+			return string.Join(" ", args);
+		}
+		return Console.ReadLine() ?? "";
+	}
+
+	private static string NormalizeInputPath(string path)
+	{
+		StringBuilder stringBuilder = new StringBuilder(path.Length);
+		foreach (char c in path)
+		{
+			if (c == '\0')
+			{
+				continue;
+			}
+			if (!char.IsControl(c) || c == '\t')
+			{
+				stringBuilder.Append(c);
+			}
+		}
+		return stringBuilder.ToString().Trim().Trim(new char[1] { '"' });
 	}
 
 	private static bool IsMdpPaLayout(ExcelOperations ex)
