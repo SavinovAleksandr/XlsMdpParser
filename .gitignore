@@ -7,3 +7,5 @@ obj/
 *.xls
 *.xlsx
 *.xlsm
+*.xlsb
+~$*.xls*
