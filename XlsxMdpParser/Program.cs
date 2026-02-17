@@ -14,13 +14,14 @@ internal class Program
 {
 	private static void Main(string[] args)
 	{
-		Console.WriteLine("Перетащите один или несколько файлов в это окно и нажмите Enter:");
-		List<string> inputPaths = GetInputPaths(args);
+		Console.WriteLine("Перетащите один или несколько Excel-файлов или папку в это окно и нажмите Enter:");
+		List<InputJob> inputJobs = BuildInputJobs(args);
 		string summaryB1Text = LoadSummaryB1Config();
-		if (inputPaths.Count > 0)
+		if (inputJobs.Count > 0)
 		{
-			foreach (string text2 in inputPaths)
+			foreach (InputJob inputJob in inputJobs)
 			{
+				string text2 = inputJob.InputPath;
 				try
 				{
 					Console.WriteLine("Получен путь: " + text2);
@@ -137,10 +138,10 @@ internal class Program
 						excelOperations.setVal(num4, 1, item.ShemeNum);
 						excelOperations.Format(num4, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 						string text3 = GetSchemeHeaderLine(item.ShemeName);
-						excelOperations.setVal(num4, 2, text3, wrap: false);
+						excelOperations.setVal(num4, 2, text3, wrap: true);
 						excelOperations.Merge(num4, 2, num4, array.Count());
-						excelOperations.Format(num4, 2, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Center);
-						excelOperations.Wrap(num4, 2, wrap: false);
+						excelOperations.Format(num4, 2, ExcelHorizontalAlignment.Justify, ExcelVerticalAlignment.Center);
+						excelOperations.Wrap(num4, 2, wrap: true);
 						excelOperations.FormatCells(num4, 1, num4, array.Count(), bold: false, italic: false, Color.MistyRose.ToArgb());
 						int textWidth = array.Skip(1).Sum();
 						int rowHeight = EstimateMergedRowHeight(text3, textWidth, num12);
@@ -325,6 +326,7 @@ internal class Program
 						excelOperations.HideColumn(8);
 						excelOperations.HideColumn(11);
 					}
+					excelOperations.AutoFitSheetRowsByContent("new", 1);
 					excelOperations.Borders(1, 1, num4 - 1, array.Count());
 					excelOperations.GroupRowsPosition();
 					excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", "new", dictionary);
@@ -336,7 +338,11 @@ internal class Program
 					excelOperations.AutoFitSheetRowsByContent("Обшая информация о сечении", 5);
 					excelOperations.ConfigureSheetForPrint("Обшая информация о сечении");
 					excelOperations.ConfigureSheetForPrint("new", repeatTopTwoRows: true);
-					string text14 = Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_корр.xlsx");
+					if (!Directory.Exists(inputJob.OutputDirectory))
+					{
+						Directory.CreateDirectory(inputJob.OutputDirectory);
+					}
+					string text14 = Path.Combine(inputJob.OutputDirectory, Path.GetFileNameWithoutExtension(text2) + "_корр.xlsx");
 					excelOperations.Save(text14);
 					Console.WriteLine("Файл успешно обработан и сохранен: " + text14);
 					Console.WriteLine("Работа программы успешно завершена.");
@@ -351,10 +357,58 @@ internal class Program
 		}
 		else
 		{
-			Console.WriteLine("Пути к файлам не получены.");
+			Console.WriteLine("Пути к файлам/папкам не получены.");
 		}
 		Console.WriteLine("");
-		Console.ReadKey();
+		WaitForExitKeyIfInteractive();
+	}
+
+	private static void WaitForExitKeyIfInteractive()
+	{
+		try
+		{
+			if (!Console.IsInputRedirected)
+			{
+				Console.ReadKey();
+			}
+		}
+		catch (InvalidOperationException)
+		{
+		}
+	}
+
+	private static List<InputJob> BuildInputJobs(string[] args)
+	{
+		List<string> inputPaths = GetInputPaths(args);
+		List<InputJob> list = new List<InputJob>();
+		foreach (string inputPath in inputPaths)
+		{
+			if (File.Exists(inputPath))
+			{
+				list.Add(new InputJob
+				{
+					InputPath = inputPath,
+					OutputDirectory = (Path.GetDirectoryName(inputPath) ?? Directory.GetCurrentDirectory())
+				});
+				continue;
+			}
+			if (Directory.Exists(inputPath))
+			{
+				string text = Path.Combine(inputPath, "_корр");
+				foreach (string item in Directory.GetFiles(inputPath, "*.xlsx", SearchOption.TopDirectoryOnly).OrderBy((string p) => p, StringComparer.OrdinalIgnoreCase))
+				{
+					if (!Path.GetFileName(item).StartsWith("~$", StringComparison.OrdinalIgnoreCase))
+					{
+						list.Add(new InputJob
+						{
+							InputPath = item,
+							OutputDirectory = text
+						});
+					}
+				}
+			}
+		}
+		return list;
 	}
 
 	private static List<string> GetInputPaths(string[] args)
@@ -390,15 +444,43 @@ internal class Program
 
 	private static IEnumerable<string> SplitInputPaths(string raw)
 	{
-		MatchCollection matchCollection = Regex.Matches(raw, "\"([^\"]+)\"|([^\\s]+)");
-		foreach (Match item in matchCollection)
+		List<string> list = new List<string>();
+		StringBuilder stringBuilder = new StringBuilder();
+		bool flag = false;
+		for (int i = 0; i < raw.Length; i++)
 		{
-			string value = item.Groups[1].Success ? item.Groups[1].Value : item.Groups[2].Value;
-			if (!string.IsNullOrWhiteSpace(value))
+			char c = raw[i];
+			if (c == '"')
 			{
-				yield return value;
+				flag = !flag;
+				continue;
 			}
+			if (!flag && char.IsWhiteSpace(c))
+			{
+				if (stringBuilder.Length > 0)
+				{
+					list.Add(stringBuilder.ToString());
+					stringBuilder.Clear();
+				}
+				continue;
+			}
+			if (c == '\\' && i + 1 < raw.Length)
+			{
+				char c2 = raw[i + 1];
+				if (char.IsWhiteSpace(c2) || c2 == '"' || c2 == '\\')
+				{
+					stringBuilder.Append(c2);
+					i++;
+					continue;
+				}
+			}
+			stringBuilder.Append(c);
 		}
+		if (stringBuilder.Length > 0)
+		{
+			list.Add(stringBuilder.ToString());
+		}
+		return list;
 	}
 
 	private static string NormalizeInputPath(string path)
@@ -624,6 +706,13 @@ internal class Program
 		public int AdpDopCol { get; set; }
 
 		public bool HasMdpPa { get; set; }
+	}
+
+	private sealed class InputJob
+	{
+		public string InputPath { get; set; } = "";
+
+		public string OutputDirectory { get; set; } = "";
 	}
 
 	public static string ReadLine(ExcelOperations ex, int bRow, int eRow, int col)

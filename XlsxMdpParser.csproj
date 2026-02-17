@@ -10,9 +10,6 @@
   <PropertyGroup Condition="'$(TargetFramework)' == 'net472'">
     <Prefer32Bit>True</Prefer32Bit>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0'">
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
-  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="EPPlus" Version="8.4.2" />
   </ItemGroup>
