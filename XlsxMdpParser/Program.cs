@@ -174,9 +174,9 @@ internal class Program
 							excelOperations.setVal(num5, 3, tnv.Tnv);
 							excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 							excelOperations.setVal(num5, 4, "");
-							excelOperations.Format(num5, 4, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+							excelOperations.Format(num5, 4, ExcelHorizontalAlignment.Justify, ExcelVerticalAlignment.Top);
 							excelOperations.setVal(num5, 5, "");
-							excelOperations.Format(num5, 5, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+							excelOperations.Format(num5, 5, ExcelHorizontalAlignment.Justify, ExcelVerticalAlignment.Top);
 							List<MDP> list3 = tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != "").ToList();
 							List<MDP> list4 = list3.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
 							List<MDP> list5 = list3.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -234,7 +234,7 @@ internal class Program
 								text5 = text5 + ((item4.Num != -1) ? $"{item4.Num}) {item4.Criteria}" : item4.Criteria) + text6;
 							}
 							excelOperations.setVal(num5, 7, text5);
-							excelOperations.Format(num5, 7, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+							excelOperations.Format(num5, 7, ExcelHorizontalAlignment.Justify, ExcelVerticalAlignment.Top);
 							excelOperations.CellComment(num5, 4, text5);
 							string text7 = "";
 							foreach (MDP item5 in tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != ""))
@@ -243,7 +243,7 @@ internal class Program
 								text7 = text7 + ((item5.Num != -1) ? $"{item5.Num}) {item5.Criteria}" : item5.Criteria) + text8;
 							}
 							excelOperations.setVal(num5, 8, text7);
-							excelOperations.Format(num5, 8, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+							excelOperations.Format(num5, 8, ExcelHorizontalAlignment.Justify, ExcelVerticalAlignment.Top);
 							excelOperations.CellComment(num5, 5, text7);
 							if (tnv.AdpCriteria != "")
 							{
@@ -326,7 +326,7 @@ internal class Program
 						excelOperations.HideColumn(8);
 						excelOperations.HideColumn(11);
 					}
-					excelOperations.AutoFitSheetRowsByContent("new", 1);
+					excelOperations.AutoFitSheetRowsByContent("new", 3, 15, 1.1, new int[7] { 2, 4, 5, 6, 7, 8, 9 });
 					excelOperations.Borders(1, 1, num4 - 1, array.Count());
 					excelOperations.GroupRowsPosition();
 					excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", "new", dictionary);

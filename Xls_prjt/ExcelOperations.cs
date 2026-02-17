@@ -202,41 +202,149 @@ public class ExcelOperations
 		excelWorksheet.Cells[address].Style.VerticalAlignment = vertical;
 	}
 
-	public void AutoFitSheetRowsByContent(string sheetName, int startRow, int minHeight = 15)
+	public void AutoFitSheetRowsByContent(string sheetName, int startRow, int minHeight = 15, double extraHeightFactor = 1.0, int[] includeColumns = null)
 	{
 		ExcelWorksheet excelWorksheet = _excel.Workbook.Worksheets[sheetName];
 		if (excelWorksheet == null || excelWorksheet.Dimension == null)
 		{
 			return;
 		}
+		HashSet<int> hashSet = null;
+		if (includeColumns != null && includeColumns.Length != 0)
+		{
+			hashSet = new HashSet<int>(includeColumns);
+		}
 		int num = Math.Max(startRow, 1);
 		int row = excelWorksheet.Dimension.End.Row;
 		int column = excelWorksheet.Dimension.End.Column;
+		List<int> list = new List<int>();
+		if (hashSet == null)
+		{
+			for (int i = 1; i <= column; i++)
+			{
+				list.Add(i);
+			}
+		}
+		else
+		{
+			foreach (int item in hashSet)
+			{
+				if (item >= 1 && item <= column)
+				{
+					list.Add(item);
+				}
+			}
+			list.Sort();
+		}
+		if (list.Count == 0)
+		{
+			return;
+		}
+		Dictionary<string, ExcelAddress> dictionary = new Dictionary<string, ExcelAddress>(StringComparer.Ordinal);
+		List<double[]> list2 = new List<double[]>();
 		for (int i = num; i <= row; i++)
 		{
 			int num2 = 1;
-			for (int j = 1; j <= column; j++)
+			foreach (int item2 in list)
 			{
-				string text = excelWorksheet.Cells[i, j].Value?.ToString();
+				ExcelRange excelRange = excelWorksheet.Cells[i, item2];
+				int num3 = item2;
+				int num4 = item2;
+				string text;
+				if (excelRange.Merge)
+				{
+					string text2 = excelWorksheet.MergedCells[i, item2];
+					if (string.IsNullOrWhiteSpace(text2))
+					{
+						continue;
+					}
+					if (!dictionary.TryGetValue(text2, out var value))
+					{
+						value = new ExcelAddress(text2);
+						dictionary[text2] = value;
+					}
+					if (value.Start.Row != i || value.Start.Column != item2)
+					{
+						continue;
+					}
+					num3 = value.Start.Column;
+					num4 = value.End.Column;
+					text = excelWorksheet.Cells[value.Start.Row, value.Start.Column].Value?.ToString();
+				}
+				else
+				{
+					text = excelRange.Value?.ToString();
+				}
 				if (string.IsNullOrWhiteSpace(text))
 				{
 					continue;
 				}
 				text = text.Replace("_x000A_", "\n");
-				double width = excelWorksheet.Column(j).Width;
-				int num3 = Math.Max(8, (int)Math.Round(((width > 0.0) ? width : 8.43) * 1.6));
-				int num4 = 0;
-				string[] array = text.Split('\n');
-				foreach (string text2 in array)
+				double num5 = 0.0;
+				for (int j = num3; j <= num4; j++)
 				{
-					int num5 = Math.Max(1, text2.TrimEnd().Length);
-					num4 += Math.Max(1, (int)Math.Ceiling((double)num5 / (double)num3));
+					double width = excelWorksheet.Column(j).Width;
+					num5 += ((width > 0.0) ? width : 8.43);
 				}
-				num2 = Math.Max(num2, num4);
-				excelWorksheet.Cells[i, j].Style.WrapText = true;
+				// Column G usually contains the longest narrative criteria text.
+				// Use a tighter char-per-width estimate there to avoid clipped wrapped lines.
+				double num6Factor = 1.9;
+				if (item2 == 7)
+				{
+					// For long criteria text in G use a stricter estimate.
+					num6Factor = ((text.Length > 160) ? 1.2 : 1.35);
+				}
+				int num6 = Math.Max(8, (int)Math.Round(num5 * num6Factor));
+				int num7 = 0;
+				string[] array = text.Split('\n');
+				foreach (string text3 in array)
+				{
+					int num8 = Math.Max(1, text3.TrimEnd().Length);
+					num7 += Math.Max(1, (int)Math.Ceiling((double)num8 / (double)num6));
+				}
+				if (item2 == 7 && text.Length > 120)
+				{
+					num7++;
+				}
+				num2 = Math.Max(num2, num7);
+				excelWorksheet.Cells[i, item2].Style.WrapText = true;
+				if (excelRange.Merge)
+				{
+					string text4 = excelWorksheet.MergedCells[i, item2];
+					if (!string.IsNullOrWhiteSpace(text4) && dictionary.TryGetValue(text4, out var value2) && value2.End.Row > value2.Start.Row)
+					{
+						double num9 = Math.Max(1.0, extraHeightFactor);
+						double num10 = Math.Max((double)minHeight, (double)num7 * 13.8 * num9 + 1.5);
+						list2.Add(new double[3] { value2.Start.Row, value2.End.Row, num10 });
+					}
+				}
 			}
-			int height = Math.Max(minHeight, (int)Math.Ceiling((double)num2 * 14.5 + 2.0));
+			double num11 = Math.Max(1.0, extraHeightFactor);
+			int height = Math.Max(minHeight, (int)Math.Ceiling((double)num2 * 13.8 * num11 + 1.5));
 			excelWorksheet.Row(i).Height = height;
+		}
+		foreach (double[] item3 in list2)
+		{
+			int num12 = (int)item3[0];
+			int num13 = (int)item3[1];
+			double num14 = item3[2];
+			double num15 = 0.0;
+			for (int k = num12; k <= num13; k++)
+			{
+				num15 += ((excelWorksheet.Row(k).Height > 0.0) ? excelWorksheet.Row(k).Height : 15.0);
+			}
+			if (!(num15 + 0.1 < num14))
+			{
+				continue;
+			}
+			double num16 = num14 - num15;
+			int num17 = num13 - num12 + 1;
+			double num18 = num16 / (double)num17;
+			for (int l = num12; l <= num13; l++)
+			{
+				double num19 = (excelWorksheet.Row(l).Height > 0.0) ? excelWorksheet.Row(l).Height : 15.0;
+				excelWorksheet.Row(l).Height = num19 + num18;
+			}
 		}
 	}
 
