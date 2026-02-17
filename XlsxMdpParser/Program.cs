@@ -332,6 +332,8 @@ internal class Program
 					{
 						excelOperations.SetSheetCellValue("Обшая информация о сечении", "B1", summaryB1Text, wrap: true);
 					}
+					excelOperations.SetSheetCellAlignment("Обшая информация о сечении", "A3", ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+					excelOperations.AutoFitSheetRowsByContent("Обшая информация о сечении", 5);
 					excelOperations.ConfigureSheetForPrint("Обшая информация о сечении");
 					excelOperations.ConfigureSheetForPrint("new", repeatTopTwoRows: true);
 					string text14 = Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_корр.xlsx");

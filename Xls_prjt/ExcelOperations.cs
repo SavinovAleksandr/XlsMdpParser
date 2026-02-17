@@ -191,6 +191,55 @@ public class ExcelOperations
 		excelWorksheet.Cells[address].Style.WrapText = wrap;
 	}
 
+	public void SetSheetCellAlignment(string sheetName, string address, ExcelHorizontalAlignment horizontal, ExcelVerticalAlignment vertical)
+	{
+		ExcelWorksheet excelWorksheet = _excel.Workbook.Worksheets[sheetName];
+		if (excelWorksheet == null)
+		{
+			return;
+		}
+		excelWorksheet.Cells[address].Style.HorizontalAlignment = horizontal;
+		excelWorksheet.Cells[address].Style.VerticalAlignment = vertical;
+	}
+
+	public void AutoFitSheetRowsByContent(string sheetName, int startRow, int minHeight = 15)
+	{
+		ExcelWorksheet excelWorksheet = _excel.Workbook.Worksheets[sheetName];
+		if (excelWorksheet == null || excelWorksheet.Dimension == null)
+		{
+			return;
+		}
+		int num = Math.Max(startRow, 1);
+		int row = excelWorksheet.Dimension.End.Row;
+		int column = excelWorksheet.Dimension.End.Column;
+		for (int i = num; i <= row; i++)
+		{
+			int num2 = 1;
+			for (int j = 1; j <= column; j++)
+			{
+				string text = excelWorksheet.Cells[i, j].Value?.ToString();
+				if (string.IsNullOrWhiteSpace(text))
+				{
+					continue;
+				}
+				text = text.Replace("_x000A_", "\n");
+				double width = excelWorksheet.Column(j).Width;
+				int num3 = Math.Max(8, (int)Math.Round(((width > 0.0) ? width : 8.43) * 1.6));
+				int num4 = 0;
+				string[] array = text.Split('\n');
+				foreach (string text2 in array)
+				{
+					int num5 = Math.Max(1, text2.TrimEnd().Length);
+					num4 += Math.Max(1, (int)Math.Ceiling((double)num5 / (double)num3));
+				}
+				num2 = Math.Max(num2, num4);
+				excelWorksheet.Cells[i, j].Style.WrapText = true;
+			}
+			int height = Math.Max(minHeight, (int)Math.Ceiling((double)num2 * 14.5 + 2.0));
+			excelWorksheet.Row(i).Height = height;
+		}
+	}
+
 	public string getStr(int i, int j)
 	{
 		return (_ws.Cells[i, j].Value != null) ? _ws.Cells[i, j].Value.ToString() : "";
