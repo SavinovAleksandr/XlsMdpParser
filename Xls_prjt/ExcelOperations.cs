@@ -341,6 +341,13 @@ public class ExcelOperations
 		_ws.Cells[i, j].Style.Font.Color.SetColor(color);
 	}
 
+	public void FontStyle(int i, int j, float size, bool italic = false, bool bold = false)
+	{
+		_ws.Cells[i, j].Style.Font.Size = size;
+		_ws.Cells[i, j].Style.Font.Italic = italic;
+		_ws.Cells[i, j].Style.Font.Bold = bold;
+	}
+
 	public bool IsValue(string param)
 	{
 		return _ws.Cells[param].Value != null;

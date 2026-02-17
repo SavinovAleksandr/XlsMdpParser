@@ -122,6 +122,7 @@ internal class Program
 			excelOperations.FormatCells(1, 1, 2, array.Count(), bold: true, italic: false, Color.PowderBlue.ToArgb());
 			int num4 = 3;
 			Dictionary<string, int> dictionary = new Dictionary<string, int>();
+			List<int> notControlledRows = new List<int>();
 			foreach (MdpBuilder item in list)
 			{
 				string key = item.ShemeNum.Trim(new char[1] { ' ' });
@@ -144,6 +145,7 @@ internal class Program
 				int num6 = num5;
 				string mergedAdpDop = GetSingleSchemeAdpDopValue(item.TnvList);
 				bool mergeAdpDop = !string.IsNullOrWhiteSpace(mergedAdpDop);
+				HashSet<int> hashSet = new HashSet<int>();
 				excelOperations.setVal(num5, 1, item.ShemeNum);
 				excelOperations.Merge(num5, 1, num5 + item.TnvList.Count - 1, 1);
 				excelOperations.Format(num5, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
@@ -152,6 +154,18 @@ internal class Program
 				excelOperations.Format(num5, 2, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Center);
 				foreach (TNV tnv in item.TnvList)
 				{
+					if (IsNotControlledPhrase(tnv.Tnv))
+					{
+						excelOperations.setVal(num5, 3, "Не контролируется", wrap: false);
+						excelOperations.Merge(num5, 3, num5, array.Count());
+						excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+						excelOperations.FontColor(num5, 3, Color.Red);
+						excelOperations.FontStyle(num5, 3, 14f, italic: true);
+						notControlledRows.Add(num5);
+						hashSet.Add(num5);
+						num5++;
+						continue;
+					}
 					excelOperations.setVal(num5, 3, tnv.Tnv);
 					excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 					excelOperations.setVal(num5, 4, "");
@@ -254,20 +268,47 @@ internal class Program
 						string text14Line = ((item8 == tnv.AdpDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
 						text13 = text13 + item8 + text14Line;
 					}
-					excelOperations.setVal(num5, 12, mergeAdpDop ? "" : text13);
+					excelOperations.setVal(num5, 12, text13);
 					excelOperations.Format(num5, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 					num5++;
 				}
 				if (mergeAdpDop)
 				{
-					excelOperations.setVal(num6, 12, mergedAdpDop);
-					excelOperations.Merge(num6, 12, num5 - 1, 12);
-					excelOperations.Format(num6, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+					int num7 = num6;
+					while (num7 <= num5 - 1)
+					{
+						while (num7 <= num5 - 1 && hashSet.Contains(num7))
+						{
+							num7++;
+						}
+						if (num7 > num5 - 1)
+						{
+							break;
+						}
+						int num8 = num7;
+						while (num8 <= num5 - 1 && !hashSet.Contains(num8))
+						{
+							num8++;
+						}
+						int num9 = num8 - 1;
+						excelOperations.setVal(num7, 12, mergedAdpDop);
+						if (num9 > num7)
+						{
+							excelOperations.Merge(num7, 12, num9, 12);
+						}
+						excelOperations.Format(num7, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+						num7 = num8 + 1;
+					}
 				}
 				excelOperations.GroupRows(num4 + 1, num5 - 1, 1, hide: false);
 				num4 = num5;
 			}
 			excelOperations.Font("Liberation Serif", num12);
+			foreach (int item9 in notControlledRows)
+			{
+				excelOperations.FontColor(item9, 3, Color.Red);
+				excelOperations.FontStyle(item9, 3, 14f, italic: true);
+			}
 			for (int n = 1; n <= array.Count(); n++)
 			{
 				excelOperations.AutoFitWithMaxWidth(n, array[n - 1]);
@@ -283,7 +324,7 @@ internal class Program
 			excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", "new", dictionary);
 			excelOperations.ConfigureSheetForPrint("Обшая информация о сечении");
 			excelOperations.ConfigureSheetForPrint("new", repeatTopTwoRows: true);
-			string text14 = Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_modify.xlsx");
+			string text14 = Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_корр.xlsx");
 			excelOperations.Save(text14);
 			Console.WriteLine("Файл успешно обработан и сохранен: " + text14);
 			Console.WriteLine("Работа программы успешно завершена.");
@@ -628,6 +669,11 @@ internal class Program
 			return list2[0];
 		}
 		return "";
+	}
+
+	private static bool IsNotControlledPhrase(string text)
+	{
+		return string.Equals((text ?? "").Trim(), "Не контролируется", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static string GetSchemeHeaderLine(string shemeName)
