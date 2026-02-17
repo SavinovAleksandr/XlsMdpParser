@@ -14,336 +14,389 @@ internal class Program
 {
 	private static void Main(string[] args)
 	{
-		Console.WriteLine("Перетащите файл в это окно и нажмите Enter:");
-		string text = GetInputPath(args);
-		if (!string.IsNullOrWhiteSpace(text))
+		Console.WriteLine("Перетащите один или несколько файлов в это окно и нажмите Enter:");
+		List<string> inputPaths = GetInputPaths(args);
+		string summaryB1Text = LoadSummaryB1Config();
+		if (inputPaths.Count > 0)
 		{
-			string text2 = NormalizeInputPath(text);
-			Console.WriteLine("Получен путь: " + text2);
-			ExcelOperations excelOperations = new ExcelOperations(text2, 1);
-			ColumnMap columnMap = ResolveColumnMap(excelOperations);
-			List<MdpBuilder> list = new List<MdpBuilder>();
-			for (int i = 4; i <= excelOperations.LastColumnRow(); i++)
+			foreach (string text2 in inputPaths)
 			{
-				if (!(excelOperations.getStr(i, columnMap.SchemeNameCol) != "") || !(excelOperations.getStr(i, columnMap.SchemeNameCol) != " "))
+				try
 				{
-					continue;
-				}
-				string str = excelOperations.getStr(i, columnMap.SchemeNameCol);
-				string str2 = excelOperations.getStr(i, columnMap.SchemeNumCol);
-				string text3 = excelOperations.MergedCells(i, columnMap.SchemeNameCol);
-				int num10 = Convert.ToInt32(text3.Split(new char[1] { ':' })[0].Substring(1));
-				int num11 = Convert.ToInt32(text3.Split(new char[1] { ':' })[1].Substring(1));
-				List<TNV> list2 = new List<TNV>();
-				for (int j = num10; j <= num11; )
-				{
-					while (j <= num11 && string.IsNullOrWhiteSpace(excelOperations.getStr(j, columnMap.TnvCol)))
+					Console.WriteLine("Получен путь: " + text2);
+					ExcelOperations excelOperations = new ExcelOperations(text2, 1);
+					ColumnMap columnMap = ResolveColumnMap(excelOperations);
+					List<MdpBuilder> list = new List<MdpBuilder>();
+					for (int i = 4; i <= excelOperations.LastColumnRow(); i++)
 					{
-						j++;
-					}
-					if (j > num11)
-					{
-						break;
-					}
-					int bRow = j;
-					int eRow = j;
-					while (eRow < num11 && string.IsNullOrWhiteSpace(excelOperations.getStr(eRow + 1, 4)))
-					{
-						eRow++;
-					}
-					list2.Add(new TNV
-					{
-						Tnv = ReadLine(excelOperations, bRow, eRow, columnMap.TnvCol),
-						MdpNoPA = ReadLines(excelOperations, bRow, eRow, columnMap.MdpNoPaCol, modify: true),
-						MdpPa = ((columnMap.MdpPaCol != -1) ? ReadLines(excelOperations, bRow, eRow, columnMap.MdpPaCol, modify: true) : new List<MDP>()),
-						Adp = ReadLine(excelOperations, bRow, eRow, columnMap.AdpCol),
-						MdpNoPaCriteria = ReadLines(excelOperations, bRow, eRow, columnMap.MdpNoPaCriteriaCol),
-						MdpPaCriteria = ((columnMap.MdpPaCriteriaCol != -1) ? ReadLines(excelOperations, bRow, eRow, columnMap.MdpPaCriteriaCol) : new List<MDP>()),
-						AdpCriteria = ReadLine(excelOperations, bRow, eRow, columnMap.AdpCriteriaCol),
-						MdpNoPaDop = ReadDopLines(excelOperations, bRow, eRow, columnMap.MdpNoPaDopCol),
-						MdpPaDop = ((columnMap.MdpPaDopCol != -1) ? ReadDopLines(excelOperations, bRow, eRow, columnMap.MdpPaDopCol) : new List<string>()),
-						AdpDop = ReadDopLines(excelOperations, bRow, eRow, columnMap.AdpDopCol)
-					});
-					j = eRow + 1;
-				}
-				list.Add(new MdpBuilder
-				{
-					ShemeName = str,
-					ShemeNum = str2,
-					TnvList = list2
-				});
-			}
-			excelOperations.AddList("new");
-			int num12 = 10;
-			int[] array = new int[12]
-			{
-				7, 40, 11, 80, 120, 30, 50, 50, 30, 25,
-				25, 25
-			};
-			for (int k = 1; k <= array.Count(); k++)
-			{
-				excelOperations.Width(k, array[k - 1]);
-			}
-			excelOperations.setVal(1, 1, "№ п/п");
-			excelOperations.Merge(1, 1, 2, 1, hor: true, vert: true);
-			excelOperations.setVal(1, 2, "Схема сети");
-			excelOperations.Merge(1, 2, 2, 2, hor: true, vert: true);
-			excelOperations.setVal(1, 3, "ТНВ, °С");
-			excelOperations.Merge(1, 3, 2, 3, hor: true, vert: true);
-			excelOperations.setVal(1, 4, "МДП без ПА");
-			excelOperations.Merge(1, 4, 2, 4, hor: true, vert: true);
-			excelOperations.setVal(1, 5, "МДП с ПА");
-			excelOperations.Merge(1, 5, 2, 5, hor: true, vert: true);
-			excelOperations.setVal(1, 6, "АДП");
-			excelOperations.Merge(1, 6, 2, 6, hor: true, vert: true);
-			excelOperations.setVal(1, 7, "Критерий определения допустимых перетоков");
-			excelOperations.Merge(1, 7, 1, 9, hor: true, vert: true);
-			excelOperations.setVal(2, 7, "МДП без ПА");
-			excelOperations.Format(2, 7, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-			excelOperations.setVal(2, 8, "МДП с ПА");
-			excelOperations.Format(2, 8, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-			excelOperations.setVal(2, 9, "АДП");
-			excelOperations.Format(2, 9, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-			excelOperations.setVal(1, 10, "Контроль дополнительных параметров");
-			excelOperations.Merge(1, 10, 1, 12, hor: true, vert: true);
-			excelOperations.setVal(2, 10, "МДП без ПА");
-			excelOperations.Format(2, 10, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-			excelOperations.setVal(2, 11, "МДП с ПА");
-			excelOperations.Format(2, 11, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-			excelOperations.setVal(2, 12, "АДП");
-			excelOperations.Format(2, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-			excelOperations.FreezeRows(2);
-			if (!columnMap.HasMdpPa)
-			{
-				excelOperations.HideColumn(5);
-				excelOperations.HideColumn(8);
-				excelOperations.HideColumn(11);
-			}
-			excelOperations.FormatCells(1, 1, 2, array.Count(), bold: true, italic: false, Color.PowderBlue.ToArgb());
-			int num4 = 3;
-			Dictionary<string, int> dictionary = new Dictionary<string, int>();
-			List<int> notControlledRows = new List<int>();
-			foreach (MdpBuilder item in list)
-			{
-				string key = item.ShemeNum.Trim(new char[1] { ' ' });
-				if (!dictionary.ContainsKey(key))
-				{
-					dictionary.Add(key, num4);
-				}
-				excelOperations.setVal(num4, 1, item.ShemeNum);
-				excelOperations.Format(num4, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-				string text3 = GetSchemeHeaderLine(item.ShemeName);
-				excelOperations.setVal(num4, 2, text3, wrap: false);
-				excelOperations.Merge(num4, 2, num4, array.Count());
-				excelOperations.Format(num4, 2, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Center);
-				excelOperations.Wrap(num4, 2, wrap: false);
-				excelOperations.FormatCells(num4, 1, num4, array.Count(), bold: false, italic: false, Color.MistyRose.ToArgb());
-				int textWidth = array.Skip(1).Sum();
-				int rowHeight = EstimateMergedRowHeight(text3, textWidth, num12);
-				excelOperations.Height(num4, Math.Max(20, rowHeight));
-				int num5 = num4 + 1;
-				int num6 = num5;
-				string mergedAdpDop = GetSingleSchemeAdpDopValue(item.TnvList);
-				bool mergeAdpDop = !string.IsNullOrWhiteSpace(mergedAdpDop);
-				HashSet<int> hashSet = new HashSet<int>();
-				excelOperations.setVal(num5, 1, item.ShemeNum);
-				excelOperations.Merge(num5, 1, num5 + item.TnvList.Count - 1, 1);
-				excelOperations.Format(num5, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-				excelOperations.setVal(num5, 2, item.ShemeName);
-				excelOperations.Merge(num5, 2, num5 + item.TnvList.Count - 1, 2);
-				excelOperations.Format(num5, 2, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Center);
-				foreach (TNV tnv in item.TnvList)
-				{
-					if (IsNotControlledPhrase(tnv.Tnv))
-					{
-						excelOperations.setVal(num5, 3, "Не контролируется", wrap: false);
-						excelOperations.Merge(num5, 3, num5, array.Count());
-						excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-						excelOperations.FontColor(num5, 3, Color.Red);
-						excelOperations.FontStyle(num5, 3, 14f, italic: true);
-						notControlledRows.Add(num5);
-						hashSet.Add(num5);
-						num5++;
-						continue;
-					}
-					excelOperations.setVal(num5, 3, tnv.Tnv);
-					excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-					excelOperations.setVal(num5, 4, "");
-					excelOperations.Format(num5, 4, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
-					excelOperations.setVal(num5, 5, "");
-					excelOperations.Format(num5, 5, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
-					List<MDP> list3 = tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != "").ToList();
-					List<MDP> list4 = list3.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
-					List<MDP> list5 = list3.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
-					if (list5.Count <= 1)
-					{
-						list4.Clear();
-					}
-					else if (list4.Count == 0)
-					{
-						list4.Add(new MDP
+						if (!(excelOperations.getStr(i, columnMap.SchemeNameCol) != "") || !(excelOperations.getStr(i, columnMap.SchemeNameCol) != " "))
 						{
-							Num = -1,
-							Criteria = "Минимальное из:"
+							continue;
+						}
+						string str = excelOperations.getStr(i, columnMap.SchemeNameCol);
+						string str2 = excelOperations.getStr(i, columnMap.SchemeNumCol);
+						string text3 = excelOperations.MergedCells(i, columnMap.SchemeNameCol);
+						int num10 = Convert.ToInt32(text3.Split(new char[1] { ':' })[0].Substring(1));
+						int num11 = Convert.ToInt32(text3.Split(new char[1] { ':' })[1].Substring(1));
+						List<TNV> list2 = new List<TNV>();
+						for (int j = num10; j <= num11; )
+						{
+							while (j <= num11 && string.IsNullOrWhiteSpace(excelOperations.getStr(j, columnMap.TnvCol)))
+							{
+								j++;
+							}
+							if (j > num11)
+							{
+								break;
+							}
+							int bRow = j;
+							int eRow = j;
+							while (eRow < num11 && string.IsNullOrWhiteSpace(excelOperations.getStr(eRow + 1, 4)))
+							{
+								eRow++;
+							}
+							list2.Add(new TNV
+							{
+								Tnv = ReadLine(excelOperations, bRow, eRow, columnMap.TnvCol),
+								MdpNoPA = ReadLines(excelOperations, bRow, eRow, columnMap.MdpNoPaCol, modify: true),
+								MdpPa = ((columnMap.MdpPaCol != -1) ? ReadLines(excelOperations, bRow, eRow, columnMap.MdpPaCol, modify: true) : new List<MDP>()),
+								Adp = ReadLine(excelOperations, bRow, eRow, columnMap.AdpCol),
+								MdpNoPaCriteria = ReadLines(excelOperations, bRow, eRow, columnMap.MdpNoPaCriteriaCol),
+								MdpPaCriteria = ((columnMap.MdpPaCriteriaCol != -1) ? ReadLines(excelOperations, bRow, eRow, columnMap.MdpPaCriteriaCol) : new List<MDP>()),
+								AdpCriteria = ReadLine(excelOperations, bRow, eRow, columnMap.AdpCriteriaCol),
+								MdpNoPaDop = ReadDopLines(excelOperations, bRow, eRow, columnMap.MdpNoPaDopCol),
+								MdpPaDop = ((columnMap.MdpPaDopCol != -1) ? ReadDopLines(excelOperations, bRow, eRow, columnMap.MdpPaDopCol) : new List<string>()),
+								AdpDop = ReadDopLines(excelOperations, bRow, eRow, columnMap.AdpDopCol)
+							});
+							j = eRow + 1;
+						}
+						list.Add(new MdpBuilder
+						{
+							ShemeName = str,
+							ShemeNum = str2,
+							TnvList = list2
 						});
 					}
-					List<MDP> list6 = list4.Concat(list5).ToList();
-					for (int l = 0; l < list6.Count; l++)
+					excelOperations.AddList("new");
+					int num12 = 10;
+					int[] array = new int[12]
 					{
-						MDP mDP = list6[l];
-						bool flag2 = l == list6.Count - 1;
-						excelOperations.CellRichText(num5, 4, (!flag2) ? (mDP.Criteria + Environment.NewLine) : mDP.Criteria, (mDP.Num != -1) ? $"{mDP.Num}) " : "");
+						7, 40, 11, 80, 120, 30, 50, 50, 30, 25,
+						25, 25
+					};
+					for (int k = 1; k <= array.Count(); k++)
+					{
+						excelOperations.Width(k, array[k - 1]);
 					}
-					List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != "").ToList();
-					List<MDP> list8 = list7.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
-					List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
-					if (list9.Count <= 1)
+					excelOperations.setVal(1, 1, "№ п/п");
+					excelOperations.Merge(1, 1, 2, 1, hor: true, vert: true);
+					excelOperations.setVal(1, 2, "Схема сети");
+					excelOperations.Merge(1, 2, 2, 2, hor: true, vert: true);
+					excelOperations.setVal(1, 3, "ТНВ, °С");
+					excelOperations.Merge(1, 3, 2, 3, hor: true, vert: true);
+					excelOperations.setVal(1, 4, "МДП без ПА");
+					excelOperations.Merge(1, 4, 2, 4, hor: true, vert: true);
+					excelOperations.setVal(1, 5, "МДП с ПА");
+					excelOperations.Merge(1, 5, 2, 5, hor: true, vert: true);
+					excelOperations.setVal(1, 6, "АДП");
+					excelOperations.Merge(1, 6, 2, 6, hor: true, vert: true);
+					excelOperations.setVal(1, 7, "Критерий определения допустимых перетоков");
+					excelOperations.Merge(1, 7, 1, 9, hor: true, vert: true);
+					excelOperations.setVal(2, 7, "МДП без ПА");
+					excelOperations.Format(2, 7, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+					excelOperations.setVal(2, 8, "МДП с ПА");
+					excelOperations.Format(2, 8, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+					excelOperations.setVal(2, 9, "АДП");
+					excelOperations.Format(2, 9, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+					excelOperations.setVal(1, 10, "Контроль дополнительных параметров");
+					excelOperations.Merge(1, 10, 1, 12, hor: true, vert: true);
+					excelOperations.setVal(2, 10, "МДП без ПА");
+					excelOperations.Format(2, 10, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+					excelOperations.setVal(2, 11, "МДП с ПА");
+					excelOperations.Format(2, 11, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+					excelOperations.setVal(2, 12, "АДП");
+					excelOperations.Format(2, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+					excelOperations.FreezeRows(2);
+					if (!columnMap.HasMdpPa)
 					{
-						list8.Clear();
+						excelOperations.HideColumn(5);
+						excelOperations.HideColumn(8);
+						excelOperations.HideColumn(11);
 					}
-					else if (list8.Count == 0)
+					excelOperations.FormatCells(1, 1, 2, array.Count(), bold: true, italic: false, Color.PowderBlue.ToArgb());
+					int num4 = 3;
+					Dictionary<string, int> dictionary = new Dictionary<string, int>();
+					List<int> notControlledRows = new List<int>();
+					foreach (MdpBuilder item in list)
 					{
-						list8.Add(new MDP
+						string key = item.ShemeNum.Trim(new char[1] { ' ' });
+						if (!dictionary.ContainsKey(key))
 						{
-							Num = -1,
-							Criteria = "Минимальное из:"
-						});
+							dictionary.Add(key, num4);
+						}
+						excelOperations.setVal(num4, 1, item.ShemeNum);
+						excelOperations.Format(num4, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+						string text3 = GetSchemeHeaderLine(item.ShemeName);
+						excelOperations.setVal(num4, 2, text3, wrap: false);
+						excelOperations.Merge(num4, 2, num4, array.Count());
+						excelOperations.Format(num4, 2, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Center);
+						excelOperations.Wrap(num4, 2, wrap: false);
+						excelOperations.FormatCells(num4, 1, num4, array.Count(), bold: false, italic: false, Color.MistyRose.ToArgb());
+						int textWidth = array.Skip(1).Sum();
+						int rowHeight = EstimateMergedRowHeight(text3, textWidth, num12);
+						excelOperations.Height(num4, Math.Max(20, rowHeight));
+						int num5 = num4 + 1;
+						int num6 = num5;
+						string mergedAdpDop = GetSingleSchemeAdpDopValue(item.TnvList);
+						bool mergeAdpDop = !string.IsNullOrWhiteSpace(mergedAdpDop);
+						HashSet<int> hashSet = new HashSet<int>();
+						excelOperations.setVal(num5, 1, item.ShemeNum);
+						excelOperations.Merge(num5, 1, num5 + item.TnvList.Count - 1, 1);
+						excelOperations.Format(num5, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+						excelOperations.setVal(num5, 2, item.ShemeName);
+						excelOperations.Merge(num5, 2, num5 + item.TnvList.Count - 1, 2);
+						excelOperations.Format(num5, 2, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Center);
+						foreach (TNV tnv in item.TnvList)
+						{
+							if (IsNotControlledPhrase(tnv.Tnv))
+							{
+								excelOperations.setVal(num5, 3, "Не контролируется", wrap: false);
+								excelOperations.Merge(num5, 3, num5, array.Count());
+								excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+								excelOperations.FontColor(num5, 3, Color.Red);
+								excelOperations.FontStyle(num5, 3, 14f, italic: true);
+								notControlledRows.Add(num5);
+								hashSet.Add(num5);
+								num5++;
+								continue;
+							}
+							excelOperations.setVal(num5, 3, tnv.Tnv);
+							excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+							excelOperations.setVal(num5, 4, "");
+							excelOperations.Format(num5, 4, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+							excelOperations.setVal(num5, 5, "");
+							excelOperations.Format(num5, 5, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+							List<MDP> list3 = tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != "").ToList();
+							List<MDP> list4 = list3.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+							List<MDP> list5 = list3.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+							if (list5.Count <= 1)
+							{
+								list4.Clear();
+							}
+							else if (list4.Count == 0)
+							{
+								list4.Add(new MDP
+								{
+									Num = -1,
+									Criteria = "Минимальное из:"
+								});
+							}
+							List<MDP> list6 = list4.Concat(list5).ToList();
+							for (int l = 0; l < list6.Count; l++)
+							{
+								MDP mDP = list6[l];
+								bool flag2 = l == list6.Count - 1;
+								excelOperations.CellRichText(num5, 4, (!flag2) ? (mDP.Criteria + Environment.NewLine) : mDP.Criteria, (mDP.Num != -1) ? $"{mDP.Num}) " : "");
+							}
+							List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != "").ToList();
+							List<MDP> list8 = list7.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+							List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+							if (list9.Count <= 1)
+							{
+								list8.Clear();
+							}
+							else if (list8.Count == 0)
+							{
+								list8.Add(new MDP
+								{
+									Num = -1,
+									Criteria = "Минимальное из:"
+								});
+							}
+							List<MDP> list10 = list8.Concat(list9).ToList();
+							for (int m = 0; m < list10.Count; m++)
+							{
+								MDP mDP2 = list10[m];
+								bool flag3 = m == list10.Count - 1;
+								excelOperations.CellRichText(num5, 5, (!flag3) ? (mDP2.Criteria + Environment.NewLine) : mDP2.Criteria, (mDP2.Num != -1) ? $"{mDP2.Num}) " : "");
+							}
+							if (tnv.Adp != "")
+							{
+								excelOperations.setVal(num4 + 1, 6, tnv.Adp);
+								excelOperations.Merge(num4 + 1, 6, num4 + item.TnvList.Count, 6);
+								excelOperations.Format(num4 + 1, 6, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+							}
+							string text5 = "";
+							foreach (MDP item4 in tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != ""))
+							{
+								string text6 = ((item4 == tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
+								text5 = text5 + ((item4.Num != -1) ? $"{item4.Num}) {item4.Criteria}" : item4.Criteria) + text6;
+							}
+							excelOperations.setVal(num5, 7, text5);
+							excelOperations.Format(num5, 7, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+							excelOperations.CellComment(num5, 4, text5);
+							string text7 = "";
+							foreach (MDP item5 in tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != ""))
+							{
+								string text8 = ((item5 == tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
+								text7 = text7 + ((item5.Num != -1) ? $"{item5.Num}) {item5.Criteria}" : item5.Criteria) + text8;
+							}
+							excelOperations.setVal(num5, 8, text7);
+							excelOperations.Format(num5, 8, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+							excelOperations.CellComment(num5, 5, text7);
+							if (tnv.AdpCriteria != "")
+							{
+								excelOperations.setVal(num4 + 1, 9, tnv.AdpCriteria);
+								excelOperations.Merge(num4 + 1, 9, num4 + item.TnvList.Count, 9);
+								excelOperations.Format(num4 + 1, 9, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+							}
+							string text9 = "";
+							foreach (string item6 in tnv.MdpNoPaDop)
+							{
+								string text10 = ((item6 == tnv.MdpNoPaDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
+								text9 = text9 + item6 + text10;
+							}
+							excelOperations.setVal(num5, 10, text9);
+							excelOperations.Format(num5, 10, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+							string text11 = "";
+							foreach (string item7 in tnv.MdpPaDop)
+							{
+								string text12 = ((item7 == tnv.MdpPaDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
+								text11 = text11 + item7 + text12;
+							}
+							excelOperations.setVal(num5, 11, text11);
+							excelOperations.Format(num5, 11, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+							string text13 = "";
+							foreach (string item8 in tnv.AdpDop)
+							{
+								string text14Line = ((item8 == tnv.AdpDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
+								text13 = text13 + item8 + text14Line;
+							}
+							excelOperations.setVal(num5, 12, text13);
+							excelOperations.Format(num5, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+							num5++;
+						}
+						if (mergeAdpDop)
+						{
+							int num7 = num6;
+							while (num7 <= num5 - 1)
+							{
+								while (num7 <= num5 - 1 && hashSet.Contains(num7))
+								{
+									num7++;
+								}
+								if (num7 > num5 - 1)
+								{
+									break;
+								}
+								int num8 = num7;
+								while (num8 <= num5 - 1 && !hashSet.Contains(num8))
+								{
+									num8++;
+								}
+								int num9 = num8 - 1;
+								excelOperations.setVal(num7, 12, mergedAdpDop);
+								if (num9 > num7)
+								{
+									excelOperations.Merge(num7, 12, num9, 12);
+								}
+								excelOperations.Format(num7, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+								num7 = num8 + 1;
+							}
+						}
+						int rowHeight2 = EstimateMergedRowHeight(item.ShemeName, array[1], num12);
+						EnsureMergedSchemeBodyHeight(excelOperations, num6, num5 - 1, rowHeight2);
+						excelOperations.GroupRows(num4 + 1, num5 - 1, 1, hide: false);
+						num4 = num5;
 					}
-					List<MDP> list10 = list8.Concat(list9).ToList();
-					for (int m = 0; m < list10.Count; m++)
+					excelOperations.Font("Liberation Serif", num12);
+					foreach (int item9 in notControlledRows)
 					{
-						MDP mDP2 = list10[m];
-						bool flag3 = m == list10.Count - 1;
-						excelOperations.CellRichText(num5, 5, (!flag3) ? (mDP2.Criteria + Environment.NewLine) : mDP2.Criteria, (mDP2.Num != -1) ? $"{mDP2.Num}) " : "");
+						excelOperations.FontColor(item9, 3, Color.Red);
+						excelOperations.FontStyle(item9, 3, 14f, italic: true);
 					}
-					if (tnv.Adp != "")
+					for (int n = 1; n <= array.Count(); n++)
 					{
-						excelOperations.setVal(num4 + 1, 6, tnv.Adp);
-						excelOperations.Merge(num4 + 1, 6, num4 + item.TnvList.Count, 6);
-						excelOperations.Format(num4 + 1, 6, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+						excelOperations.AutoFitWithMaxWidth(n, array[n - 1]);
 					}
-					string text5 = "";
-					foreach (MDP item4 in tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != ""))
+					if (!columnMap.HasMdpPa)
 					{
-						string text6 = ((item4 == tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-						text5 = text5 + ((item4.Num != -1) ? $"{item4.Num}) {item4.Criteria}" : item4.Criteria) + text6;
+						excelOperations.HideColumn(5);
+						excelOperations.HideColumn(8);
+						excelOperations.HideColumn(11);
 					}
-					excelOperations.setVal(num5, 7, text5);
-					excelOperations.Format(num5, 7, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
-					excelOperations.CellComment(num5, 4, text5);
-					string text7 = "";
-					foreach (MDP item5 in tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != ""))
+					excelOperations.Borders(1, 1, num4 - 1, array.Count());
+					excelOperations.GroupRowsPosition();
+					excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", "new", dictionary);
+					if (!string.IsNullOrWhiteSpace(summaryB1Text))
 					{
-						string text8 = ((item5 == tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-						text7 = text7 + ((item5.Num != -1) ? $"{item5.Num}) {item5.Criteria}" : item5.Criteria) + text8;
+						excelOperations.SetSheetCellValue("Обшая информация о сечении", "B1", summaryB1Text, wrap: true);
 					}
-					excelOperations.setVal(num5, 8, text7);
-					excelOperations.Format(num5, 8, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
-					excelOperations.CellComment(num5, 5, text7);
-					if (tnv.AdpCriteria != "")
-					{
-						excelOperations.setVal(num4 + 1, 9, tnv.AdpCriteria);
-						excelOperations.Merge(num4 + 1, 9, num4 + item.TnvList.Count, 9);
-						excelOperations.Format(num4 + 1, 9, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-					}
-					string text9 = "";
-					foreach (string item6 in tnv.MdpNoPaDop)
-					{
-						string text10 = ((item6 == tnv.MdpNoPaDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-						text9 = text9 + item6 + text10;
-					}
-					excelOperations.setVal(num5, 10, text9);
-					excelOperations.Format(num5, 10, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-					string text11 = "";
-					foreach (string item7 in tnv.MdpPaDop)
-					{
-						string text12 = ((item7 == tnv.MdpPaDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-						text11 = text11 + item7 + text12;
-					}
-					excelOperations.setVal(num5, 11, text11);
-					excelOperations.Format(num5, 11, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-					string text13 = "";
-					foreach (string item8 in tnv.AdpDop)
-					{
-						string text14Line = ((item8 == tnv.AdpDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-						text13 = text13 + item8 + text14Line;
-					}
-					excelOperations.setVal(num5, 12, text13);
-					excelOperations.Format(num5, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-					num5++;
+					excelOperations.ConfigureSheetForPrint("Обшая информация о сечении");
+					excelOperations.ConfigureSheetForPrint("new", repeatTopTwoRows: true);
+					string text14 = Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_корр.xlsx");
+					excelOperations.Save(text14);
+					Console.WriteLine("Файл успешно обработан и сохранен: " + text14);
+					Console.WriteLine("Работа программы успешно завершена.");
 				}
-				if (mergeAdpDop)
+				catch (Exception ex)
 				{
-					int num7 = num6;
-					while (num7 <= num5 - 1)
-					{
-						while (num7 <= num5 - 1 && hashSet.Contains(num7))
-						{
-							num7++;
-						}
-						if (num7 > num5 - 1)
-						{
-							break;
-						}
-						int num8 = num7;
-						while (num8 <= num5 - 1 && !hashSet.Contains(num8))
-						{
-							num8++;
-						}
-						int num9 = num8 - 1;
-						excelOperations.setVal(num7, 12, mergedAdpDop);
-						if (num9 > num7)
-						{
-							excelOperations.Merge(num7, 12, num9, 12);
-						}
-						excelOperations.Format(num7, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-						num7 = num8 + 1;
-					}
+					Console.WriteLine("Ошибка обработки файла: " + text2);
+					Console.WriteLine(ex.Message);
 				}
-				excelOperations.GroupRows(num4 + 1, num5 - 1, 1, hide: false);
-				num4 = num5;
+				Console.WriteLine("");
 			}
-			excelOperations.Font("Liberation Serif", num12);
-			foreach (int item9 in notControlledRows)
-			{
-				excelOperations.FontColor(item9, 3, Color.Red);
-				excelOperations.FontStyle(item9, 3, 14f, italic: true);
-			}
-			for (int n = 1; n <= array.Count(); n++)
-			{
-				excelOperations.AutoFitWithMaxWidth(n, array[n - 1]);
-			}
-			if (!columnMap.HasMdpPa)
-			{
-				excelOperations.HideColumn(5);
-				excelOperations.HideColumn(8);
-				excelOperations.HideColumn(11);
-			}
-			excelOperations.Borders(1, 1, num4 - 1, array.Count());
-			excelOperations.GroupRowsPosition();
-			excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", "new", dictionary);
-			excelOperations.ConfigureSheetForPrint("Обшая информация о сечении");
-			excelOperations.ConfigureSheetForPrint("new", repeatTopTwoRows: true);
-			string text14 = Path.Combine(Path.GetDirectoryName(text2) ?? "", Path.GetFileNameWithoutExtension(text2) + "_корр.xlsx");
-			excelOperations.Save(text14);
-			Console.WriteLine("Файл успешно обработан и сохранен: " + text14);
-			Console.WriteLine("Работа программы успешно завершена.");
 		}
 		else
 		{
-			Console.WriteLine("Путь не получен.");
+			Console.WriteLine("Пути к файлам не получены.");
 		}
 		Console.WriteLine("");
 		Console.ReadKey();
 	}
 
-	private static string GetInputPath(string[] args)
+	private static List<string> GetInputPaths(string[] args)
 	{
+		List<string> list = new List<string>();
 		if (args != null && args.Length != 0)
 		{
-			return string.Join(" ", args);
+			foreach (string arg in args)
+			{
+				string text = NormalizeInputPath(arg);
+				if (!string.IsNullOrWhiteSpace(text))
+				{
+					list.Add(text);
+				}
+			}
+			return list;
 		}
-		return Console.ReadLine() ?? "";
+		string text2 = Console.ReadLine() ?? "";
+		if (string.IsNullOrWhiteSpace(text2))
+		{
+			return list;
+		}
+		foreach (string item in SplitInputPaths(text2))
+		{
+			string text3 = NormalizeInputPath(item);
+			if (!string.IsNullOrWhiteSpace(text3))
+			{
+				list.Add(text3);
+			}
+		}
+		return list;
+	}
+
+	private static IEnumerable<string> SplitInputPaths(string raw)
+	{
+		MatchCollection matchCollection = Regex.Matches(raw, "\"([^\"]+)\"|([^\\s]+)");
+		foreach (Match item in matchCollection)
+		{
+			string value = item.Groups[1].Success ? item.Groups[1].Value : item.Groups[2].Value;
+			if (!string.IsNullOrWhiteSpace(value))
+			{
+				yield return value;
+			}
+		}
 	}
 
 	private static string NormalizeInputPath(string path)
@@ -361,6 +414,28 @@ internal class Program
 			}
 		}
 		return stringBuilder.ToString().Trim().Trim(new char[1] { '"' });
+	}
+
+	private static string LoadSummaryB1Config()
+	{
+		string[] array = new string[3]
+		{
+			Path.Combine(Directory.GetCurrentDirectory(), "summary_b1.txt"),
+			Path.Combine(AppContext.BaseDirectory, "summary_b1.txt"),
+			Path.Combine(AppContext.BaseDirectory, "config", "summary_b1.txt")
+		};
+		foreach (string text in array)
+		{
+			if (File.Exists(text))
+			{
+				string text2 = File.ReadAllText(text, Encoding.UTF8).Replace("\r\n", "\n").Replace("\n", Environment.NewLine).Trim();
+				if (!string.IsNullOrWhiteSpace(text2))
+				{
+					return text2;
+				}
+			}
+		}
+		return "";
 	}
 
 	private static ColumnMap ResolveColumnMap(ExcelOperations ex)
@@ -652,6 +727,31 @@ internal class Program
 		return num2 * num4 + 2;
 	}
 
+	private static void EnsureMergedSchemeBodyHeight(ExcelOperations ex, int startRow, int endRow, int minTotalHeight)
+	{
+		if (endRow < startRow)
+		{
+			return;
+		}
+		double num = 0.0;
+		for (int i = startRow; i <= endRow; i++)
+		{
+			num += ex.GetRowHeightOrDefault(i, 15.0);
+		}
+		double num2 = minTotalHeight - num;
+		if (num2 <= 0.0)
+		{
+			return;
+		}
+		int num3 = endRow - startRow + 1;
+		int num4 = (int)Math.Ceiling(num2 / (double)num3);
+		for (int j = startRow; j <= endRow; j++)
+		{
+			int height = (int)Math.Ceiling(ex.GetRowHeightOrDefault(j, 15.0)) + num4;
+			ex.Height(j, Math.Max(15, height));
+		}
+	}
+
 	private static string GetSingleSchemeAdpDopValue(List<TNV> tnvList)
 	{
 		List<string> list = new List<string>();
@@ -678,16 +778,9 @@ internal class Program
 
 	private static string GetSchemeHeaderLine(string shemeName)
 	{
-		string[] array = (shemeName ?? "").Replace("_x000A_", "\n").Split('\n');
-		foreach (string text in array)
-		{
-			string text2 = text.Trim();
-			if (!string.IsNullOrEmpty(text2))
-			{
-				return text2;
-			}
-		}
-		return "";
+		string text = (shemeName ?? "").Replace("_x000A_", " ").Replace('\n', ' ').Replace('\r', ' ');
+		text = Regex.Replace(text, "\\s+", " ").Trim();
+		return text;
 	}
 
 	public static bool AreBracketsBalanced(string input)

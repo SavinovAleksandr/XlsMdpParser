@@ -180,6 +180,17 @@ public class ExcelOperations
 		_ws.Cells[param].Value = (object)val;
 	}
 
+	public void SetSheetCellValue(string sheetName, string address, string value, bool wrap = true)
+	{
+		ExcelWorksheet excelWorksheet = _excel.Workbook.Worksheets[sheetName];
+		if (excelWorksheet == null)
+		{
+			return;
+		}
+		excelWorksheet.Cells[address].Value = value;
+		excelWorksheet.Cells[address].Style.WrapText = wrap;
+	}
+
 	public string getStr(int i, int j)
 	{
 		return (_ws.Cells[i, j].Value != null) ? _ws.Cells[i, j].Value.ToString() : "";
@@ -416,6 +427,16 @@ public class ExcelOperations
 	public void Height(int row, int height)
 	{
 		_ws.Row(row).Height = height;
+	}
+
+	public double GetRowHeightOrDefault(int row, double defaultHeight = 15.0)
+	{
+		double height = _ws.Row(row).Height;
+		if (height <= 0.0)
+		{
+			return defaultHeight;
+		}
+		return height;
 	}
 
 	public void UpdateSummarySheetHyperlinks(string summarySheetName, string targetSheetName, Dictionary<string, int> schemeRows)
