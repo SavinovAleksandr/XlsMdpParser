@@ -87,9 +87,14 @@ public class ExcelOperations
 
 	public void CellRichText(int i, int j, string val, string prefix)
 	{
+		CellRichText(i, j, val, prefix, Color.Black);
+	}
+
+	public void CellRichText(int i, int j, string val, string prefix, Color textColor)
+	{
 		ExcelRange excelRange = _ws.Cells[i, j];
 		ExcelRichText excelRichText2 = excelRange.RichText.Add(prefix);
-		excelRichText2.Color = Color.Black;
+		excelRichText2.Color = textColor;
 		excelRichText2.Bold = false;
 		if (val.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
 		{
@@ -101,7 +106,7 @@ public class ExcelOperations
 			if (text2.Length > 0)
 			{
 				ExcelRichText excelRichText3 = excelRange.RichText.Add(text2);
-				excelRichText3.Color = Color.Black;
+				excelRichText3.Color = textColor;
 				excelRichText3.Bold = false;
 			}
 			return;
@@ -148,7 +153,7 @@ public class ExcelOperations
 					}
 					else
 					{
-						excelRichText.Color = Color.Black;
+						excelRichText.Color = textColor;
 						excelRichText.Bold = false;
 					}
 					break;
@@ -162,6 +167,26 @@ public class ExcelOperations
 				break;
 			}
 		}
+	}
+
+	public void ClearCell(int i, int j)
+	{
+		_ws.Cells[i, j].Value = null;
+		if (_ws.Cells[i, j].IsRichText)
+		{
+			_ws.Cells[i, j].RichText.Clear();
+		}
+	}
+
+	public void AppendColoredText(int i, int j, string text, Color color, bool bold = false)
+	{
+		if (string.IsNullOrEmpty(text))
+		{
+			return;
+		}
+		ExcelRichText excelRichText = _ws.Cells[i, j].RichText.Add(text);
+		excelRichText.Color = color;
+		excelRichText.Bold = bold;
 	}
 
 	public void CellComment(int i, int j, string str)

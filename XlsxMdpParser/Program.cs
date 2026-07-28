@@ -61,10 +61,10 @@ internal class Program
 								Tnv = ReadLine(excelOperations, bRow, eRow, columnMap.TnvCol),
 								MdpNoPA = ReadLines(excelOperations, bRow, eRow, columnMap.MdpNoPaCol, modify: true),
 								MdpPa = ((columnMap.MdpPaCol != -1) ? ReadLines(excelOperations, bRow, eRow, columnMap.MdpPaCol, modify: true) : new List<MDP>()),
-								Adp = ReadLine(excelOperations, bRow, eRow, columnMap.AdpCol),
+								Adp = CellModifyString(ReadLine(excelOperations, bRow, eRow, columnMap.AdpCol)),
 								MdpNoPaCriteria = ReadLines(excelOperations, bRow, eRow, columnMap.MdpNoPaCriteriaCol),
 								MdpPaCriteria = ((columnMap.MdpPaCriteriaCol != -1) ? ReadLines(excelOperations, bRow, eRow, columnMap.MdpPaCriteriaCol) : new List<MDP>()),
-								AdpCriteria = ReadLine(excelOperations, bRow, eRow, columnMap.AdpCriteriaCol),
+								AdpCriteria = CellModifyString(ReadLine(excelOperations, bRow, eRow, columnMap.AdpCriteriaCol)),
 								MdpNoPaDop = ReadDopLines(excelOperations, bRow, eRow, columnMap.MdpNoPaDopCol),
 								MdpPaDop = ((columnMap.MdpPaDopCol != -1) ? ReadDopLines(excelOperations, bRow, eRow, columnMap.MdpPaDopCol) : new List<string>()),
 								AdpDop = ReadDopLines(excelOperations, bRow, eRow, columnMap.AdpDopCol)
@@ -128,6 +128,7 @@ internal class Program
 					int num4 = 3;
 					Dictionary<string, int> dictionary = new Dictionary<string, int>();
 					List<int> notControlledRows = new List<int>();
+					Dictionary<string, Color> criteriaColorMap = BuildCriteriaColorMap(list);
 					foreach (MdpBuilder item in list)
 					{
 						string key = item.ShemeNum.Trim(new char[1] { ' ' });
@@ -151,7 +152,6 @@ internal class Program
 						string mergedAdpDop = GetSingleSchemeAdpDopValue(item.TnvList);
 						bool mergeAdpDop = !string.IsNullOrWhiteSpace(mergedAdpDop);
 						HashSet<int> hashSet = new HashSet<int>();
-						int numVisualPair = 0;
 						excelOperations.setVal(num5, 1, item.ShemeNum);
 						excelOperations.Merge(num5, 1, num5 + item.TnvList.Count - 1, 1);
 						excelOperations.Format(num5, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
@@ -174,10 +174,6 @@ internal class Program
 							}
 							excelOperations.setVal(num5, 3, tnv.Tnv);
 							excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-							excelOperations.setVal(num5, 4, "");
-							excelOperations.Format(num5, 4, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
-							excelOperations.setVal(num5, 5, "");
-							excelOperations.Format(num5, 5, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
 							List<MDP> list3 = tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != "").ToList();
 							List<MDP> list4 = list3.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
 							List<MDP> list5 = list3.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
@@ -193,13 +189,8 @@ internal class Program
 									Criteria = "Минимальное из:"
 								});
 							}
-							List<MDP> list6 = list4.Concat(list5).ToList();
-							for (int l = 0; l < list6.Count; l++)
-							{
-								MDP mDP = list6[l];
-								bool flag2 = l == list6.Count - 1;
-								excelOperations.CellRichText(num5, 4, (!flag2) ? (mDP.Criteria + Environment.NewLine) : mDP.Criteria, (mDP.Num != -1) ? $"{mDP.Num}) " : "");
-							}
+							List<MDP> list11 = tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != "").OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
+							WriteColoredMdpBlocks(excelOperations, num5, 4, list4.Concat(list5).ToList(), list11, criteriaColorMap);
 							List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != "").ToList();
 							List<MDP> list8 = list7.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
 							List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
@@ -215,50 +206,33 @@ internal class Program
 									Criteria = "Минимальное из:"
 								});
 							}
-							List<MDP> list10 = list8.Concat(list9).ToList();
-							for (int m = 0; m < list10.Count; m++)
+							List<MDP> list12 = tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != "").OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
+							if (columnMap.HasMdpPa)
 							{
-								MDP mDP2 = list10[m];
-								bool flag3 = m == list10.Count - 1;
-								excelOperations.CellRichText(num5, 5, (!flag3) ? (mDP2.Criteria + Environment.NewLine) : mDP2.Criteria, (mDP2.Num != -1) ? $"{mDP2.Num}) " : "");
+								WriteColoredMdpBlocks(excelOperations, num5, 5, list8.Concat(list9).ToList(), list12, criteriaColorMap);
+							}
+							else
+							{
+								excelOperations.setVal(num5, 5, "");
+								excelOperations.Format(num5, 5, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
 							}
 							if (tnv.Adp != "")
 							{
-								excelOperations.setVal(num4 + 1, 6, tnv.Adp);
+								excelOperations.setVal(num4 + 1, 6, tnv.Adp, wrap: true);
 								excelOperations.Merge(num4 + 1, 6, num4 + item.TnvList.Count, 6);
-								excelOperations.Format(num4 + 1, 6, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+								bool flagAdpMultiline = tnv.Adp.Contains('\n') || tnv.Adp.Contains('\r');
+								excelOperations.Format(num4 + 1, 6, flagAdpMultiline ? ExcelHorizontalAlignment.Left : ExcelHorizontalAlignment.Center, flagAdpMultiline ? ExcelVerticalAlignment.Top : ExcelVerticalAlignment.Center);
 							}
-							string text5 = "";
-							List<MDP> list11 = tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != "").OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
-							foreach (MDP item4 in list11)
-							{
-								string text6 = ((item4 == list11.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-								text5 = text5 + ((item4.Num != -1) ? $"{item4.Num}) {item4.Criteria}" : item4.Criteria) + text6;
-							}
-							excelOperations.setVal(num5, 7, text5);
-							excelOperations.Format(num5, 7, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+							string text5 = WriteColoredCriteriaBlocks(excelOperations, num5, 7, list11, criteriaColorMap);
 							excelOperations.CellComment(num5, 4, text5);
-							string text7 = "";
-							List<MDP> list12 = tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != "").OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
-							foreach (MDP item5 in list12)
-							{
-								string text8 = ((item5 == list12.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-								text7 = text7 + ((item5.Num != -1) ? $"{item5.Num}) {item5.Criteria}" : item5.Criteria) + text8;
-							}
-							excelOperations.setVal(num5, 8, text7);
-							excelOperations.Format(num5, 8, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+							string text7 = WriteColoredCriteriaBlocks(excelOperations, num5, 8, list12, criteriaColorMap);
 							excelOperations.CellComment(num5, 5, text7);
-							int numColor = ((numVisualPair % 2 == 0) ? Color.FromArgb(255, 248, 236).ToArgb() : Color.FromArgb(236, 246, 255).ToArgb());
-							excelOperations.FormatCells(num5, 4, numColor);
-							excelOperations.FormatCells(num5, 7, numColor);
-							excelOperations.FormatCells(num5, 5, numColor);
-							excelOperations.FormatCells(num5, 8, numColor);
-							numVisualPair++;
 							if (tnv.AdpCriteria != "")
 							{
-								excelOperations.setVal(num4 + 1, 9, tnv.AdpCriteria);
+								excelOperations.setVal(num4 + 1, 9, tnv.AdpCriteria, wrap: true);
 								excelOperations.Merge(num4 + 1, 9, num4 + item.TnvList.Count, 9);
-								excelOperations.Format(num4 + 1, 9, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+								bool flagAdpCritMultiline = tnv.AdpCriteria.Contains('\n') || tnv.AdpCriteria.Contains('\r');
+								excelOperations.Format(num4 + 1, 9, flagAdpCritMultiline ? ExcelHorizontalAlignment.Left : ExcelHorizontalAlignment.Center, flagAdpCritMultiline ? ExcelVerticalAlignment.Top : ExcelVerticalAlignment.Center);
 							}
 							string text9 = "";
 							foreach (string item6 in tnv.MdpNoPaDop)
@@ -1169,6 +1143,117 @@ internal class Program
 	private static bool IsNotControlledPhrase(string text)
 	{
 		return string.Equals((text ?? "").Trim(), "Не контролируется", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static readonly Color[] CriteriaPalette = new Color[12]
+	{
+		Color.FromArgb(0, 70, 140),
+		Color.FromArgb(140, 60, 0),
+		Color.FromArgb(0, 110, 40),
+		Color.FromArgb(120, 0, 120),
+		Color.FromArgb(160, 0, 0),
+		Color.FromArgb(0, 110, 110),
+		Color.FromArgb(90, 60, 0),
+		Color.FromArgb(0, 0, 150),
+		Color.FromArgb(150, 0, 70),
+		Color.FromArgb(70, 90, 0),
+		Color.FromArgb(0, 80, 160),
+		Color.FromArgb(110, 40, 40)
+	};
+
+	private static Dictionary<string, Color> BuildCriteriaColorMap(List<MdpBuilder> schemes)
+	{
+		Dictionary<string, Color> dictionary = new Dictionary<string, Color>(StringComparer.OrdinalIgnoreCase);
+		int num = 0;
+		foreach (MdpBuilder scheme in schemes)
+		{
+			foreach (TNV tnv in scheme.TnvList)
+			{
+				foreach (MDP item in tnv.MdpNoPaCriteria.Concat(tnv.MdpPaCriteria))
+				{
+					string text = NormalizeCriteriaKey(item.Criteria);
+					if (!string.IsNullOrWhiteSpace(text) && !dictionary.ContainsKey(text))
+					{
+						dictionary[text] = CriteriaPalette[num % CriteriaPalette.Length];
+						num++;
+					}
+				}
+			}
+		}
+		return dictionary;
+	}
+
+	private static string NormalizeCriteriaKey(string text)
+	{
+		return Regex.Replace((text ?? "").Replace("_x000A_", " ").Trim(), "\\s+", " ");
+	}
+
+	private static Color GetColorForCriterion(Dictionary<string, Color> colorMap, string criteriaText, int fallbackNum)
+	{
+		string text = NormalizeCriteriaKey(criteriaText);
+		if (!string.IsNullOrWhiteSpace(text) && colorMap.TryGetValue(text, out var value))
+		{
+			return value;
+		}
+		if (fallbackNum > 0)
+		{
+			return CriteriaPalette[(fallbackNum - 1) % CriteriaPalette.Length];
+		}
+		return Color.Black;
+	}
+
+	private static Color GetColorForMdpNum(Dictionary<string, Color> colorMap, List<MDP> criteriaList, int mdpNum)
+	{
+		MDP mDP = criteriaList.FirstOrDefault((MDP c) => c.Num == mdpNum);
+		if (mDP != null)
+		{
+			return GetColorForCriterion(colorMap, mDP.Criteria, mdpNum);
+		}
+		return GetColorForCriterion(colorMap, "", mdpNum);
+	}
+
+	private static void WriteColoredMdpBlocks(ExcelOperations excelOperations, int row, int col, List<MDP> mdpBlocks, List<MDP> criteriaList, Dictionary<string, Color> colorMap)
+	{
+		excelOperations.ClearCell(row, col);
+		excelOperations.Format(row, col, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+		for (int i = 0; i < mdpBlocks.Count; i++)
+		{
+			MDP mDP = mdpBlocks[i];
+			bool flag = i == mdpBlocks.Count - 1;
+			string text = (!flag) ? (mDP.Criteria + Environment.NewLine) : mDP.Criteria;
+			string prefix = (mDP.Num != -1) ? $"{mDP.Num}) " : "";
+			Color color = Color.Black;
+			if (mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
+			{
+				color = Color.Black;
+			}
+			else if (mDP.Num >= 0)
+			{
+				color = GetColorForMdpNum(colorMap, criteriaList, mDP.Num);
+			}
+			excelOperations.CellRichText(row, col, text, prefix, color);
+		}
+	}
+
+	private static string WriteColoredCriteriaBlocks(ExcelOperations excelOperations, int row, int col, List<MDP> criteriaList, Dictionary<string, Color> colorMap)
+	{
+		excelOperations.ClearCell(row, col);
+		excelOperations.Format(row, col, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
+		StringBuilder stringBuilder = new StringBuilder();
+		for (int i = 0; i < criteriaList.Count; i++)
+		{
+			MDP mDP = criteriaList[i];
+			bool flag = i == criteriaList.Count - 1;
+			string text = (mDP.Num != -1) ? $"{mDP.Num}) {mDP.Criteria}" : mDP.Criteria;
+			if (!flag)
+			{
+				text += Environment.NewLine;
+			}
+			Color color = GetColorForCriterion(colorMap, mDP.Criteria, mDP.Num);
+			excelOperations.AppendColoredText(row, col, text, color);
+			stringBuilder.Append(text);
+		}
+		return stringBuilder.ToString().TrimEnd('\r', '\n');
 	}
 
 	private static string GetSchemeHeaderLine(string shemeName)
