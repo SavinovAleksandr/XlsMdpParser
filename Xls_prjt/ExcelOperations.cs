@@ -106,14 +106,19 @@ public class ExcelOperations
 			}
 			return;
 		}
-		string[] array = val.Split('|', ' ');
+		string[] array = Regex.Split(val, "(\\s+|\\|)");
 		foreach (string text in array)
 		{
-			string text2 = text.Replace(",", ", ");
-			switch (text)
+			if (string.IsNullOrEmpty(text) || text == "|")
+			{
+				continue;
+			}
+			string text2 = text;
+			string text3 = text.Trim();
+			switch (text3)
 			{
 			default:
-				if (!(text == "and"))
+				if (!(text3 == "and"))
 				{
 					break;
 				}
@@ -121,22 +126,22 @@ public class ExcelOperations
 			case "+":
 			case "-":
 			case "or":
-				text2 = " " + text + " ";
+				text2 = " " + text3 + " ";
 				break;
 			}
 			ExcelRichText excelRichText = excelRange.RichText.Add(text2);
-			if (text == "if" || text == "{" || text == "}")
+			if (text3 == "if" || text3 == "{" || text3 == "}")
 			{
 				excelRichText.Color = Color.Red;
 				excelRichText.Bold = true;
 				continue;
 			}
-			switch (text)
+			switch (text3)
 			{
 			default:
-				if (!(text == "]"))
+				if (!(text3 == "]"))
 				{
-					if (text == "and" || text == "or")
+					if (text3 == "and" || text3 == "or")
 					{
 						excelRichText.Color = Color.Blue;
 						excelRichText.Bold = true;

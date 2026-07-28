@@ -151,6 +151,7 @@ internal class Program
 						string mergedAdpDop = GetSingleSchemeAdpDopValue(item.TnvList);
 						bool mergeAdpDop = !string.IsNullOrWhiteSpace(mergedAdpDop);
 						HashSet<int> hashSet = new HashSet<int>();
+						int numVisualPair = 0;
 						excelOperations.setVal(num5, 1, item.ShemeNum);
 						excelOperations.Merge(num5, 1, num5 + item.TnvList.Count - 1, 1);
 						excelOperations.Format(num5, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
@@ -174,12 +175,12 @@ internal class Program
 							excelOperations.setVal(num5, 3, tnv.Tnv);
 							excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 							excelOperations.setVal(num5, 4, "");
-							excelOperations.Format(num5, 4, ExcelHorizontalAlignment.Justify, ExcelVerticalAlignment.Top);
+							excelOperations.Format(num5, 4, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
 							excelOperations.setVal(num5, 5, "");
-							excelOperations.Format(num5, 5, ExcelHorizontalAlignment.Justify, ExcelVerticalAlignment.Top);
+							excelOperations.Format(num5, 5, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
 							List<MDP> list3 = tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != "").ToList();
 							List<MDP> list4 = list3.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
-							List<MDP> list5 = list3.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+							List<MDP> list5 = list3.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
 							if (list5.Count <= 1)
 							{
 								list4.Clear();
@@ -201,7 +202,7 @@ internal class Program
 							}
 							List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != "").ToList();
 							List<MDP> list8 = list7.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
-							List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+							List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
 							if (list9.Count <= 1)
 							{
 								list8.Clear();
@@ -228,23 +229,31 @@ internal class Program
 								excelOperations.Format(num4 + 1, 6, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 							}
 							string text5 = "";
-							foreach (MDP item4 in tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != ""))
+							List<MDP> list11 = tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != "").OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
+							foreach (MDP item4 in list11)
 							{
-								string text6 = ((item4 == tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
+								string text6 = ((item4 == list11.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
 								text5 = text5 + ((item4.Num != -1) ? $"{item4.Num}) {item4.Criteria}" : item4.Criteria) + text6;
 							}
 							excelOperations.setVal(num5, 7, text5);
-							excelOperations.Format(num5, 7, ExcelHorizontalAlignment.Justify, ExcelVerticalAlignment.Top);
+							excelOperations.Format(num5, 7, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
 							excelOperations.CellComment(num5, 4, text5);
 							string text7 = "";
-							foreach (MDP item5 in tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != ""))
+							List<MDP> list12 = tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != "").OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
+							foreach (MDP item5 in list12)
 							{
-								string text8 = ((item5 == tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != "").LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
+								string text8 = ((item5 == list12.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
 								text7 = text7 + ((item5.Num != -1) ? $"{item5.Num}) {item5.Criteria}" : item5.Criteria) + text8;
 							}
 							excelOperations.setVal(num5, 8, text7);
-							excelOperations.Format(num5, 8, ExcelHorizontalAlignment.Justify, ExcelVerticalAlignment.Top);
+							excelOperations.Format(num5, 8, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
 							excelOperations.CellComment(num5, 5, text7);
+							int numColor = ((numVisualPair % 2 == 0) ? Color.FromArgb(255, 248, 236).ToArgb() : Color.FromArgb(236, 246, 255).ToArgb());
+							excelOperations.FormatCells(num5, 4, numColor);
+							excelOperations.FormatCells(num5, 7, numColor);
+							excelOperations.FormatCells(num5, 5, numColor);
+							excelOperations.FormatCells(num5, 8, numColor);
+							numVisualPair++;
 							if (tnv.AdpCriteria != "")
 							{
 								excelOperations.setVal(num4 + 1, 9, tnv.AdpCriteria);
@@ -768,7 +777,7 @@ internal class Program
 						list.Add(new MDP
 						{
 							Num = num,
-							Criteria = (modify ? CellModifyString(text2) : text2)
+								Criteria = ReorderNumberedBlocks(modify ? CellModifyString(text2) : text2)
 						});
 					}
 					else
@@ -776,7 +785,7 @@ internal class Program
 						list.Add(new MDP
 						{
 							Num = -1,
-							Criteria = (modify ? CellModifyString(text) : text)
+								Criteria = ReorderNumberedBlocks(modify ? CellModifyString(text) : text)
 						});
 					}
 				}
@@ -795,13 +804,308 @@ internal class Program
 
 	public static string CellModifyString(string text)
 	{
+		text = (text ?? "").Replace("_x000A_", Environment.NewLine).Trim();
+		if (TryFormatNestedIfCriteria(text, out var formatted))
+		{
+			return formatted;
+		}
 		text = Regex.Replace(text, "\\bMIN\\b", "min");
-		text = text.Replace("-", " - ").Replace("+", " + ").Replace(",", ", ")
-			.Replace("  ", " ")
-			.Replace("==", "=")
-			.Replace("*", "·");
+		text = text.Replace("==", "=");
 		BracketNode node = Parse(text);
 		return Reconstruct(node) ?? "";
+	}
+
+	private sealed class IfExprNode
+	{
+		public string Condition { get; set; } = "";
+
+		public IfExprNode TrueBranch { get; set; }
+
+		public IfExprNode FalseBranch { get; set; }
+
+		public string LeafExpression { get; set; }
+
+		public bool IsLeaf => LeafExpression != null;
+	}
+
+	private sealed class IfLeafCase
+	{
+		public List<string> Conditions { get; } = new List<string>();
+
+		public string Expression { get; set; } = "";
+	}
+
+	private static bool TryFormatNestedIfCriteria(string text, out string formatted)
+	{
+		formatted = "";
+		if (!TryParseIfNode(text, out var root))
+		{
+			return false;
+		}
+		List<IfLeafCase> list = new List<IfLeafCase>();
+		CollectIfLeafCases(root, new List<string>(), list);
+		if (list.Count <= 1)
+		{
+			return false;
+		}
+		StringBuilder stringBuilder = new StringBuilder();
+		for (int i = 0; i < list.Count; i++)
+		{
+			IfLeafCase ifLeafCase = list[i];
+			string text2 = string.Join(" И ", ifLeafCase.Conditions.Select((string c) => NormalizeCondition(c)).Where((string c) => !string.IsNullOrWhiteSpace(c)));
+			if (string.IsNullOrWhiteSpace(text2))
+			{
+				text2 = "Условие";
+			}
+			stringBuilder.Append(text2);
+			stringBuilder.Append(':');
+			stringBuilder.Append(Environment.NewLine);
+			stringBuilder.Append(NormalizeMathExpression(ifLeafCase.Expression));
+			if (i != list.Count - 1)
+			{
+				stringBuilder.Append(',');
+			}
+			if (i != list.Count - 1)
+			{
+				stringBuilder.Append(Environment.NewLine);
+			}
+		}
+		formatted = stringBuilder.ToString();
+		return !string.IsNullOrWhiteSpace(formatted);
+	}
+
+	private static void CollectIfLeafCases(IfExprNode node, List<string> currentConditions, List<IfLeafCase> result)
+	{
+		if (node.IsLeaf)
+		{
+			result.Add(new IfLeafCase
+			{
+				Expression = node.LeafExpression ?? "",
+			});
+			result[result.Count - 1].Conditions.AddRange(currentConditions);
+			return;
+		}
+		List<string> list = new List<string>(currentConditions);
+		list.Add(node.Condition);
+		if (node.TrueBranch != null)
+		{
+			CollectIfLeafCases(node.TrueBranch, list, result);
+		}
+		List<string> list2 = new List<string>(currentConditions);
+		list2.Add(NegateCondition(node.Condition));
+		if (node.FalseBranch != null)
+		{
+			CollectIfLeafCases(node.FalseBranch, list2, result);
+		}
+	}
+
+	private static bool TryParseIfNode(string text, out IfExprNode node)
+	{
+		node = new IfExprNode();
+		string text2 = TrimOuterWrapping(text);
+		if (!IsIfCall(text2))
+		{
+			node.LeafExpression = text2;
+			return false;
+		}
+		if (!TrySplitIfArguments(text2, out var condition, out var trueExpr, out var falseExpr))
+		{
+			return false;
+		}
+		node.Condition = condition.Trim();
+		node.TrueBranch = IsIfCall(TrimOuterWrapping(trueExpr))
+			? ParseIfBranch(trueExpr)
+			: new IfExprNode { LeafExpression = trueExpr.Trim() };
+		node.FalseBranch = IsIfCall(TrimOuterWrapping(falseExpr))
+			? ParseIfBranch(falseExpr)
+			: new IfExprNode { LeafExpression = falseExpr.Trim() };
+		return true;
+	}
+
+	private static IfExprNode ParseIfBranch(string text)
+	{
+		if (TryParseIfNode(text, out var node))
+		{
+			return node;
+		}
+		return new IfExprNode
+		{
+			LeafExpression = TrimOuterWrapping(text).Trim()
+		};
+	}
+
+	private static bool IsIfCall(string text)
+	{
+		string text2 = TrimOuterWrapping(text).Trim();
+		return text2.StartsWith("if(", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static bool TrySplitIfArguments(string ifCall, out string condition, out string trueExpr, out string falseExpr)
+	{
+		condition = "";
+		trueExpr = "";
+		falseExpr = "";
+		string text = TrimOuterWrapping(ifCall).Trim();
+		if (!text.StartsWith("if(", StringComparison.OrdinalIgnoreCase) || !text.EndsWith(")"))
+		{
+			return false;
+		}
+		string text2 = text.Substring(3, text.Length - 4);
+		List<int> list = new List<int>();
+		int num = 0;
+		for (int i = 0; i < text2.Length; i++)
+		{
+			char c = text2[i];
+			if (c == '(')
+			{
+				num++;
+			}
+			else if (c == ')')
+			{
+				num--;
+			}
+			else if (c == ',' && num == 0)
+			{
+				list.Add(i);
+			}
+		}
+		if (list.Count != 2)
+		{
+			return false;
+		}
+		condition = text2.Substring(0, list[0]).Trim();
+		trueExpr = text2.Substring(list[0] + 1, list[1] - list[0] - 1).Trim();
+		falseExpr = text2.Substring(list[1] + 1).Trim();
+		return condition.Length > 0 && trueExpr.Length > 0 && falseExpr.Length > 0;
+	}
+
+	private static string TrimOuterWrapping(string input)
+	{
+		string text = (input ?? "").Trim();
+		while (text.StartsWith("(") && text.EndsWith(")") && IsOuterPair(text))
+		{
+			text = text.Substring(1, text.Length - 2).Trim();
+		}
+		return text;
+	}
+
+	private static bool IsOuterPair(string text)
+	{
+		int num = 0;
+		for (int i = 0; i < text.Length; i++)
+		{
+			if (text[i] == '(')
+			{
+				num++;
+			}
+			else if (text[i] == ')')
+			{
+				num--;
+				if (num == 0 && i < text.Length - 1)
+				{
+					return false;
+				}
+			}
+		}
+		return num == 0;
+	}
+
+	private static string NormalizeCondition(string condition)
+	{
+		string text = Regex.Replace((condition ?? "").Replace("==", "=").Trim(), "\\s+", " ");
+		text = Regex.Replace(text, "(>=|<=|<>|=|>|<)(-?\\d+(?:\\.\\d+)?)([A-Za-zА-Яа-я_])", "$1$2 И $3");
+		text = Regex.Replace(text, "(\\d)\\s*(?=[A-Za-zА-Яа-я_][A-Za-zА-Яа-я0-9_]*\\s*(?:=|<>|>=|<=|>|<))", "$1 И ");
+		text = Regex.Replace(text, "(?<=[A-Za-zА-Яа-я0-9_\\)])И(?=[A-Za-zА-Яа-я0-9_\\(])", " И ");
+		return Regex.Replace(text, "\\s+", " ").Trim();
+	}
+
+	private static string NormalizeMathExpression(string expression)
+	{
+		return Regex.Replace((expression ?? "").Replace("==", "=").Trim(), "\\s+", " ");
+	}
+
+	private static string NegateCondition(string condition)
+	{
+		string text = NormalizeCondition(condition);
+		Match match = Regex.Match(text, "^(?<left>.+?)\\s*(?<op>>=|<=|>|<|=|<>)\\s*(?<right>-?\\d+(?:\\.\\d+)?)$");
+		if (!match.Success)
+		{
+			return "НЕ(" + text + ")";
+		}
+		string value = match.Groups["left"].Value.Trim();
+		string value2 = match.Groups["op"].Value.Trim();
+		string value3 = match.Groups["right"].Value.Trim();
+		if (int.TryParse(value3, out var result))
+		{
+			switch (value2)
+			{
+			case ">=":
+				return $"{value}<={result - 1}";
+			case "<=":
+				return $"{value}>={result + 1}";
+			case ">":
+				return $"{value}<={result}";
+			case "<":
+				return $"{value}>={result}";
+			}
+		}
+		switch (value2)
+		{
+		case ">=":
+			return $"{value}<{value3}";
+		case "<=":
+			return $"{value}>{value3}";
+		case ">":
+			return $"{value}<={value3}";
+		case "<":
+			return $"{value}>={value3}";
+		case "=":
+			if (int.TryParse(value3, out var result2) && (result2 == 0 || result2 == 1))
+			{
+				return $"{value}={1 - result2}";
+			}
+			return $"{value}<>{value3}";
+		case "<>":
+			if (int.TryParse(value3, out var result3) && (result3 == 0 || result3 == 1))
+			{
+				return $"{value}={value3}";
+			}
+			return $"{value}={value3}";
+		default:
+			return "НЕ(" + text + ")";
+		}
+	}
+
+	private static string ReorderNumberedBlocks(string text)
+	{
+		string text2 = (text ?? "").Replace("_x000A_", Environment.NewLine);
+		MatchCollection matchCollection = Regex.Matches(text2, "(?m)^\\s*(\\d+)\\)\\s");
+		if (matchCollection.Count <= 1)
+		{
+			return text2;
+		}
+		int index = matchCollection[0].Index;
+		string text3 = text2.Substring(0, index);
+		List<(int num, string block)> list = new List<(int, string)>();
+		for (int i = 0; i < matchCollection.Count; i++)
+		{
+			int num2 = matchCollection[i].Index;
+			int num3 = ((i == matchCollection.Count - 1) ? text2.Length : matchCollection[i + 1].Index);
+			if (!int.TryParse(matchCollection[i].Groups[1].Value, out var result))
+			{
+				result = int.MaxValue;
+			}
+			string item = text2.Substring(num2, num3 - num2).TrimEnd('\r', '\n');
+			list.Add((result, item));
+		}
+		list = list.OrderBy((ValueTuple<int, string> x) => x.Item1).ToList();
+		string text4 = string.Join(Environment.NewLine, list.Select((ValueTuple<int, string> x) => x.Item2));
+		if (string.IsNullOrWhiteSpace(text3))
+		{
+			return text4;
+		}
+		string text5 = text3.TrimEnd('\r', '\n');
+		return text5 + Environment.NewLine + text4;
 	}
 
 	private static int EstimateMergedRowHeight(string text, int mergedWidth, int fontSize)
