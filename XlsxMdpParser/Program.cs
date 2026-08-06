@@ -53,7 +53,11 @@ internal class Program
 							TnvList = list2
 						});
 					}
-					excelOperations.AddList("new");
+					// Сначала старый лист «Ремонтные схемы» → old, затем создаём новый с тем же именем
+					// (чтобы гиперссылки со сводки сразу указывали на итог и не ломались при ручном переименовании).
+					excelOperations.RenameSheet("Ремонтные схемы", "old");
+					excelOperations.AddList("Ремонтные схемы");
+					const string outputSheetName = "Ремонтные схемы";
 					int num12 = 10;
 					int[] array = new int[12]
 					{
@@ -132,6 +136,9 @@ internal class Program
 						bool mergeAdpDop = !string.IsNullOrWhiteSpace(mergedAdpDop);
 						HashSet<int> hashSet = new HashSet<int>();
 						int tnvCount = Math.Max(1, item.TnvList.Count);
+						bool schemeHasMdpNoPa = item.TnvList.Any((TNV t) => HasMeaningfulMdpItems(t.MdpNoPA));
+						bool schemeHasAdp = item.TnvList.Any((TNV t) => !string.IsNullOrWhiteSpace(t.Adp) && !IsDashOrEmpty(t.Adp));
+						int dashNoPaCriteriaRow = -1;
 						excelOperations.setVal(num5, 1, item.ShemeNum);
 						excelOperations.Merge(num5, 1, num5 + tnvCount - 1, 1);
 						excelOperations.Format(num5, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
@@ -154,7 +161,7 @@ internal class Program
 							}
 							excelOperations.setVal(num5, 3, tnv.Tnv);
 							excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-							List<MDP> list3 = tnv.MdpNoPA.Where((MDP mDP) => mDP.Criteria != "").ToList();
+							List<MDP> list3 = tnv.MdpNoPA.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria)).ToList();
 							List<MDP> list4 = list3.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
 							List<MDP> list5 = list3.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
 							if (list5.Count <= 1)
@@ -169,9 +176,9 @@ internal class Program
 									Criteria = "Минимальное из:"
 								});
 							}
-							List<MDP> list11 = tnv.MdpNoPaCriteria.Where((MDP mDP) => mDP.Criteria != "").OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
+							List<MDP> list11 = tnv.MdpNoPaCriteria.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria) && !IsDashOrEmpty(mDP.Criteria)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
 							WriteColoredMdpBlocks(excelOperations, num5, 4, list4.Concat(list5).ToList(), list11, criteriaColorMap);
-							List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != "").ToList();
+							List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria)).ToList();
 							List<MDP> list8 = list7.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
 							List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
 							bool hasPaSections = list9.Any((MDP m) => m.Criteria.StartsWith("—", StringComparison.Ordinal) || m.Criteria.StartsWith("[", StringComparison.Ordinal));
@@ -191,7 +198,7 @@ internal class Program
 									Criteria = "Минимальное из:"
 								});
 							}
-							List<MDP> list12 = tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != "").ToList();
+							List<MDP> list12 = tnv.MdpPaCriteria.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria) && !IsDashOrEmpty(mDP.Criteria)).ToList();
 							bool hasPaCritSections = list12.Any((MDP m) => m.Criteria.StartsWith("—", StringComparison.Ordinal) || m.Criteria.StartsWith("[", StringComparison.Ordinal));
 							if (!hasPaCritSections)
 							{
@@ -206,18 +213,30 @@ internal class Program
 								excelOperations.setVal(num5, 5, "");
 								excelOperations.Format(num5, 5, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
 							}
-							if (tnv.Adp != "")
+							if (!IsDashOrEmpty(tnv.Adp))
 							{
 								excelOperations.setVal(num4 + 1, 6, tnv.Adp, wrap: true);
 								excelOperations.Merge(num4 + 1, 6, num4 + item.TnvList.Count, 6);
 								bool flagAdpMultiline = tnv.Adp.Contains('\n') || tnv.Adp.Contains('\r');
 								excelOperations.Format(num4 + 1, 6, flagAdpMultiline ? ExcelHorizontalAlignment.Left : ExcelHorizontalAlignment.Center, flagAdpMultiline ? ExcelVerticalAlignment.Top : ExcelVerticalAlignment.Center);
 							}
-							string text5 = WriteColoredCriteriaBlocks(excelOperations, num5, 7, list11, criteriaColorMap);
-							excelOperations.CellComment(num5, 4, text5);
+							if (!schemeHasMdpNoPa)
+							{
+								if (dashNoPaCriteriaRow < 0)
+								{
+									dashNoPaCriteriaRow = num5;
+									excelOperations.setVal(num5, 7, "—", wrap: false);
+									excelOperations.Format(num5, 7, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+								}
+							}
+							else
+							{
+								string text5 = WriteColoredCriteriaBlocks(excelOperations, num5, 7, list11, criteriaColorMap);
+								excelOperations.CellComment(num5, 4, text5);
+							}
 							string text7 = WriteColoredCriteriaBlocks(excelOperations, num5, 8, list12, criteriaColorMap);
 							excelOperations.CellComment(num5, 5, text7);
-							if (tnv.AdpCriteria != "")
+							if (schemeHasAdp && !IsDashOrEmpty(tnv.AdpCriteria))
 							{
 								excelOperations.setVal(num4 + 1, 9, tnv.AdpCriteria, wrap: true);
 								excelOperations.Merge(num4 + 1, 9, num4 + item.TnvList.Count, 9);
@@ -278,6 +297,11 @@ internal class Program
 								num7 = num8 + 1;
 							}
 						}
+						if (dashNoPaCriteriaRow > 0 && num5 - 1 > dashNoPaCriteriaRow)
+						{
+							excelOperations.Merge(dashNoPaCriteriaRow, 7, num5 - 1, 7);
+							excelOperations.Format(dashNoPaCriteriaRow, 7, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+						}
 						int rowHeight2 = EstimateMergedRowHeight(item.ShemeName, array[1], num12);
 						if (num5 - 1 >= num6)
 						{
@@ -308,10 +332,10 @@ internal class Program
 						excelOperations.HideColumn(11);
 					}
 					// Высота строк строго по тексту во всех колонках; ширину не трогаем.
-					excelOperations.AutoFitSheetRowsByContent("new", 3, 15, 1.0, new int[11] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 });
+					excelOperations.AutoFitSheetRowsByContent(outputSheetName, 3, 15, 1.0, new int[11] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 });
 					excelOperations.Borders(1, 1, num4 - 1, array.Count());
 					excelOperations.GroupRowsPosition();
-					excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", "new", dictionary);
+					excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", outputSheetName, dictionary);
 					if (!string.IsNullOrWhiteSpace(summaryB1Text))
 					{
 						// Справа (C1), в том же стиле, что исходный блок «УТВЕРЖДАЮ» (Говорун).
@@ -321,7 +345,7 @@ internal class Program
 					// С 1-й строки: блок УТВЕРЖДАЮ (C1), заголовок (B3) и весь текст сводки.
 					excelOperations.AutoFitSheetRowsByContent("Обшая информация о сечении", 1, 15, 1.0);
 					excelOperations.ConfigureSheetForPrint("Обшая информация о сечении");
-					excelOperations.ConfigureSheetForPrint("new", repeatTopTwoRows: true);
+					excelOperations.ConfigureSheetForPrint(outputSheetName, repeatTopTwoRows: true);
 					if (!Directory.Exists(inputJob.OutputDirectory))
 					{
 						Directory.CreateDirectory(inputJob.OutputDirectory);
@@ -540,7 +564,26 @@ internal class Program
 		}
 		int mdpNoPaCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasMdpNoPa, -1);
 		int mdpPaCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasMdpPa, -1);
-		if (mdpPaCriteriaCol == -1 && aopoCriteriaCols.Count > 0)
+		int adpCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa && !h.IsAopo, -1);
+		if (adpCriteriaCol == -1)
+		{
+			adpCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa, -1);
+		}
+		// Как в HTML: критерии «с ПА» — заполненные колонки между «без ПА» и «АДП»
+		// (значение часто в левой ячейке merge, а подпись «МДП с ПА» — справа).
+		List<int> paCriteriaByContent = FindPopulatedColumnsBetween(ex, mdpNoPaCriteriaCol, adpCriteriaCol, bodyStartRow: 4);
+		if (paCriteriaByContent.Count > 0)
+		{
+			if (mdpPaCriteriaCol == -1 || !ColumnHasMeaningfulBody(ex, mdpPaCriteriaCol, 4))
+			{
+				mdpPaCriteriaCol = paCriteriaByContent[0];
+			}
+			aopoCriteriaCols = paCriteriaByContent
+				.Where((int c) => c != mdpPaCriteriaCol)
+				.Select((int c) => new PaColumn { Col = c, Title = "" })
+				.ToList();
+		}
+		else if (mdpPaCriteriaCol == -1 && aopoCriteriaCols.Count > 0)
 		{
 			mdpPaCriteriaCol = aopoCriteriaCols[0].Col;
 			aopoCriteriaCols = aopoCriteriaCols.Skip(1).ToList();
@@ -548,11 +591,6 @@ internal class Program
 		else if (mdpPaCriteriaCol != -1)
 		{
 			aopoCriteriaCols = aopoCriteriaCols.Where((PaColumn p) => p.Col != mdpPaCriteriaCol).ToList();
-		}
-		int adpCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa && !h.IsAopo, -1);
-		if (adpCriteriaCol == -1)
-		{
-			adpCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa, -1);
 		}
 		int mdpNoPaDopCol = headerScan.FindFirst((HeaderCell h) => h.IsDopGroup && h.HasMdpNoPa, -1);
 		int mdpPaDopCol = headerScan.FindFirst((HeaderCell h) => h.IsDopGroup && h.HasMdpPa, -1);
@@ -603,6 +641,80 @@ internal class Program
 			.Where((HeaderCell h) => h.Col >= zoneStart && h.Col != excludeCol)
 			.Select((HeaderCell h) => new PaColumn { Col = h.Col, Title = GetShortPaTitle(h) })
 			.ToList();
+	}
+
+	private static List<int> FindPopulatedColumnsBetween(ExcelOperations ex, int startExclusive, int endExclusive, int bodyStartRow)
+	{
+		List<int> list = new List<int>();
+		if (startExclusive < 0 || endExclusive < 0 || endExclusive <= startExclusive + 1)
+		{
+			return list;
+		}
+		for (int col = startExclusive + 1; col < endExclusive; col++)
+		{
+			if (ColumnHasMeaningfulBody(ex, col, bodyStartRow))
+			{
+				list.Add(col);
+			}
+		}
+		return list;
+	}
+
+	private static bool ColumnHasMeaningfulBody(ExcelOperations ex, int col, int bodyStartRow)
+	{
+		if (col <= 0)
+		{
+			return false;
+		}
+		int last = ex.LastColumnRow();
+		for (int row = bodyStartRow; row <= last; row++)
+		{
+			// Только «свои» значения — иначе merge-slave (пустая правая ячейка объединения) даст ложный столбец.
+			if (!ex.CellHasOwnValue(row, col))
+			{
+				continue;
+			}
+			string text = StripLeadingItemNumber(ex.getStr(row, col));
+			if (HasMeaningfulMdpText(text))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static bool HasMeaningfulMdpItems(IEnumerable<MDP> items)
+	{
+		return items != null && items.Any((MDP m) => HasMeaningfulMdpText(m.Criteria));
+	}
+
+	private static bool HasMeaningfulMdpText(string text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return false;
+		}
+		string trimmed = text.Trim();
+		if (IsDashOrEmpty(trimmed))
+		{
+			return false;
+		}
+		return true;
+	}
+
+	private static bool IsDashOrEmpty(string text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return true;
+		}
+		string full = text.Replace("_x000A_", " ").Trim();
+		if (full == "-" || full == "—" || full == "–" || full == "−")
+		{
+			return true;
+		}
+		// «1) –» / «1) —» без содержательного критерия
+		return Regex.IsMatch(full, "^\\d+\\)\\s*[-—–−]\\s*$");
 	}
 
 	private static string GetShortPaTitle(HeaderCell cell)
@@ -995,9 +1107,10 @@ internal class Program
 		string result = "";
 		for (int i = bRow; i <= eRow; i++)
 		{
-			if (ex.getStr(i, col) != "" && ex.getStr(i, col) != " ")
+			string text = ex.getStrMerged(i, col);
+			if (text != "" && text != " ")
 			{
-				result = ex.getStr(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
+				result = text.Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
 			}
 		}
 		return result;
@@ -1012,46 +1125,47 @@ internal class Program
 		}
 		for (int i = bRow; i <= eRow; i++)
 		{
-			string text = ex.getStr(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
-			if (text != "" && text != " ")
+			string text = ex.getStrMerged(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
+			if (text == "" || text == " ")
 			{
-				if (text.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
-				{
-					list.Add(new MDP
-					{
-						Num = -1,
-						Criteria = text
-					});
-				}
-				else
-				{
-					Match match = Regex.Match(text, "^(-?\\d+)\\)\\s*(.*)$", RegexOptions.Singleline);
-					if (match.Success)
-					{
-						int num = Convert.ToInt32(match.Groups[1].Value);
-						string text2 = match.Groups[2].Value;
-						list.Add(new MDP
-						{
-							Num = num,
-							Criteria = ReorderNumberedBlocks(modify ? CellModifyString(text2) : text2)
-						});
-					}
-					else
-					{
-						list.Add(new MDP
-						{
-							Num = -1,
-							Criteria = ReorderNumberedBlocks(modify ? CellModifyString(text) : text)
-						});
-					}
-				}
+				continue;
 			}
-			else
+			if (text.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
 			{
 				list.Add(new MDP
 				{
 					Num = -1,
 					Criteria = text
+				});
+				continue;
+			}
+			Match match = Regex.Match(text, "^(-?\\d+)\\)\\s*(.*)$", RegexOptions.Singleline);
+			if (match.Success)
+			{
+				int num = Convert.ToInt32(match.Groups[1].Value);
+				string text2 = match.Groups[2].Value;
+				string criteria = ReorderNumberedBlocks(modify ? CellModifyString(text2) : text2);
+				if (!HasMeaningfulMdpText(criteria))
+				{
+					continue;
+				}
+				list.Add(new MDP
+				{
+					Num = num,
+					Criteria = criteria
+				});
+			}
+			else
+			{
+				string criteria = ReorderNumberedBlocks(modify ? CellModifyString(text) : text);
+				if (!HasMeaningfulMdpText(criteria))
+				{
+					continue;
+				}
+				list.Add(new MDP
+				{
+					Num = -1,
+					Criteria = criteria
 				});
 			}
 		}
@@ -1067,7 +1181,7 @@ internal class Program
 		}
 		for (int i = bRow; i <= eRow; i++)
 		{
-			string text = ex.getStr(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
+			string text = ex.getStrMerged(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
 			if (text != "" && text != " ")
 			{
 				list.Add(text);

@@ -49,6 +49,29 @@ public class ExcelOperations
 		_ws.Cells["A1:XFD1048576"].Style.WrapText = true;
 	}
 
+	public void RenameSheet(string fromName, string toName)
+	{
+		ExcelWorksheet sheet = _excel.Workbook.Worksheets[fromName];
+		if (sheet == null || string.Equals(fromName, toName, StringComparison.OrdinalIgnoreCase))
+		{
+			return;
+		}
+		if (_excel.Workbook.Worksheets[toName] != null)
+		{
+			_excel.Workbook.Worksheets.Delete(toName);
+		}
+		sheet.Name = toName;
+	}
+
+	public void ActivateSheet(string sheetName)
+	{
+		ExcelWorksheet sheet = _excel.Workbook.Worksheets[sheetName];
+		if (sheet != null)
+		{
+			_ws = sheet;
+		}
+	}
+
 	public int LastColumnRow()
 	{
 		return _ws.Dimension.End.Row;
@@ -526,6 +549,36 @@ public class ExcelOperations
 	public string getStr(int i, int j)
 	{
 		return (_ws.Cells[i, j].Value != null) ? _ws.Cells[i, j].Value.ToString() : "";
+	}
+
+	/// <summary>
+	/// Читает значение ячейки; если она часть объединения и пуста — берёт верхний левый угол.
+	/// Не использовать для детекта границ схемы (там пустые «хвосты» merge как раз нужны).
+	/// </summary>
+	public string getStrMerged(int i, int j)
+	{
+		ExcelRange cell = _ws.Cells[i, j];
+		if (cell.Value != null)
+		{
+			return cell.Value.ToString();
+		}
+		if (!cell.Merge)
+		{
+			return "";
+		}
+		string merged = MergedCells(i, j);
+		if (string.IsNullOrWhiteSpace(merged) || !merged.Contains(":"))
+		{
+			return "";
+		}
+		string topLeft = merged.Split(':')[0];
+		object value = _ws.Cells[topLeft].Value;
+		return value != null ? value.ToString() : "";
+	}
+
+	public bool CellHasOwnValue(int i, int j)
+	{
+		return _ws.Cells[i, j].Value != null && !string.IsNullOrWhiteSpace(_ws.Cells[i, j].Value.ToString());
 	}
 
 	public string getStr(string param)
