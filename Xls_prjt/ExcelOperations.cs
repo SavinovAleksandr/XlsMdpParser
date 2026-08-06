@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
@@ -195,9 +196,65 @@ public class ExcelOperations
 		{
 			return;
 		}
+		str = NormalizeExcelNewlines(str);
 		ExcelRange excelRange = _ws.Cells[i, j];
-		ExcelComment excelComment = excelRange.AddComment(str);
-		excelComment.AutoFit = true;
+		if (excelRange.Comment != null)
+		{
+			_ws.Comments.Remove(excelRange.Comment);
+		}
+		ExcelComment excelComment = excelRange.AddComment(str, "XlsxMdpParser");
+		// AutoFit даёт узкое и очень высокое окно — задаём широкий прямоугольник вправо.
+		excelComment.AutoFit = false;
+		SizeCommentBox(excelComment, i, j, str);
+	}
+
+	private static string NormalizeExcelNewlines(string text)
+	{
+		return (text ?? "")
+			.Replace("_x000A_", "\n")
+			.Replace("\r\n", "\n")
+			.Replace('\r', '\n');
+	}
+
+	private static void SizeCommentBox(ExcelComment comment, int cellRow, int cellCol, string text)
+	{
+		string[] lines = NormalizeExcelNewlines(text)
+			.Split('\n')
+			.Where((string l) => !string.IsNullOrWhiteSpace(l))
+			.ToArray();
+		if (lines.Length == 0)
+		{
+			lines = new string[1] { text };
+		}
+
+		int maxLine = lines.Max((string l) => l.Length);
+		// Широкий прямоугольник вправо.
+		int widthChars = Math.Min(Math.Max(maxLine, 40), 100);
+		int colSpan = Math.Min(11, Math.Max(6, (widthChars + 12) / 12));
+
+		// Сколько символов реально помещается по ширине окна (~9 символов на колонку якоря).
+		int charsPerVisualLine = Math.Max(40, colSpan * 9);
+		int visualLines = 0;
+		foreach (string line in lines)
+		{
+			visualLines += Math.Max(1, (line.Length + charsPerVisualLine - 1) / charsPerVisualLine);
+		}
+
+		// Высота в пикселях якоря, НЕ в строках листа (строки листа у нас очень высокие).
+		const int padPx = 10;
+		const int linePx = 15;
+		int heightPx = padPx + visualLines * linePx;
+		heightPx = Math.Min(160, Math.Max(28, heightPx));
+
+		comment.From.Row = cellRow - 1;
+		comment.From.Column = cellCol;
+		comment.From.RowOffset = 2;
+		comment.From.ColumnOffset = 8;
+		// To в той же строке листа — высота только через RowOffset.
+		comment.To.Row = comment.From.Row;
+		comment.To.Column = comment.From.Column + colSpan;
+		comment.To.RowOffset = comment.From.RowOffset + heightPx;
+		comment.To.ColumnOffset = 0;
 	}
 
 	public void Wrap(int i, int j, bool wrap = true)
@@ -232,6 +289,36 @@ public class ExcelOperations
 		excelWorksheet.Cells[address].Style.VerticalAlignment = vertical;
 	}
 
+	/// <summary>
+	/// Блок «УТВЕРЖДАЮ» справа на листе сводки (как исходный блок Говоруна в C1).
+	/// </summary>
+	public void SetSummaryApprovalBlock(string sheetName, string address, string value)
+	{
+		ExcelWorksheet excelWorksheet = _excel.Workbook.Worksheets[sheetName];
+		if (excelWorksheet == null || string.IsNullOrWhiteSpace(value))
+		{
+			return;
+		}
+		ExcelRange cell = excelWorksheet.Cells[address];
+		cell.Value = value.Trim();
+		cell.Style.WrapText = true;
+		cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+		cell.Style.VerticalAlignment = ExcelVerticalAlignment.Top;
+		cell.Style.Font.Name = "Liberation Serif";
+		cell.Style.Font.Size = 14f;
+		cell.Style.Font.Bold = false;
+		cell.Style.Font.Italic = false;
+		// Не оставляем старый левый блок (B1), если ранее писали туда.
+		if (!string.Equals(address, "B1", StringComparison.OrdinalIgnoreCase))
+		{
+			ExcelRange leftCell = excelWorksheet.Cells["B1"];
+			if (leftCell.Value != null && leftCell.Value.ToString().IndexOf("УТВЕРЖДАЮ", StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				leftCell.Value = null;
+			}
+		}
+	}
+
 	public void AutoFitSheetRowsByContent(string sheetName, int startRow, int minHeight = 15, double extraHeightFactor = 1.0, int[] includeColumns = null)
 	{
 		ExcelWorksheet excelWorksheet = _excel.Workbook.Worksheets[sheetName];
@@ -239,143 +326,201 @@ public class ExcelOperations
 		{
 			return;
 		}
-		HashSet<int> hashSet = null;
-		if (includeColumns != null && includeColumns.Length != 0)
+		int firstRow = Math.Max(startRow, 1);
+		int lastRow = excelWorksheet.Dimension.End.Row;
+		int lastCol = excelWorksheet.Dimension.End.Column;
+		List<int> columns = new List<int>();
+		if (includeColumns == null || includeColumns.Length == 0)
 		{
-			hashSet = new HashSet<int>(includeColumns);
-		}
-		int num = Math.Max(startRow, 1);
-		int row = excelWorksheet.Dimension.End.Row;
-		int column = excelWorksheet.Dimension.End.Column;
-		List<int> list = new List<int>();
-		if (hashSet == null)
-		{
-			for (int i = 1; i <= column; i++)
+			for (int c = 1; c <= lastCol; c++)
 			{
-				list.Add(i);
+				columns.Add(c);
 			}
 		}
 		else
 		{
-			foreach (int item in hashSet)
+			foreach (int col in includeColumns.Distinct().OrderBy((int c) => c))
 			{
-				if (item >= 1 && item <= column)
+				if (col >= 1 && col <= lastCol)
 				{
-					list.Add(item);
+					columns.Add(col);
 				}
 			}
-			list.Sort();
 		}
-		if (list.Count == 0)
+		if (columns.Count == 0)
 		{
 			return;
 		}
-		Dictionary<string, ExcelAddress> dictionary = new Dictionary<string, ExcelAddress>(StringComparer.Ordinal);
-		List<double[]> list2 = new List<double[]>();
-		for (int i = num; i <= row; i++)
+
+		Dictionary<string, ExcelAddress> mergeCache = new Dictionary<string, ExcelAddress>(StringComparer.Ordinal);
+		// Требуемая суммарная высота для вертикальных объединений: [startRow, endRow, neededPt]
+		List<double[]> verticalMergeNeeds = new List<double[]>();
+
+		double padFactor = Math.Max(1.0, extraHeightFactor);
+		for (int r = firstRow; r <= lastRow; r++)
 		{
-			int num2 = 1;
-			foreach (int item2 in list)
+			int maxVisualLines = 1;
+			float maxFontSize = 11f;
+			foreach (int col in columns)
 			{
-				ExcelRange excelRange = excelWorksheet.Cells[i, item2];
-				int num3 = item2;
-				int num4 = item2;
-				string text;
-				if (excelRange.Merge)
+				// Не пропускаем колонки с малой шириной: на сводке объединения A:C
+				// начинаются в A (ширина ~0), иначе текст не измеряется.
+				if (excelWorksheet.Column(col).Hidden)
 				{
-					string text2 = excelWorksheet.MergedCells[i, item2];
-					if (string.IsNullOrWhiteSpace(text2))
+					continue;
+				}
+				ExcelRange cell = excelWorksheet.Cells[r, col];
+				int widthStart = col;
+				int widthEnd = col;
+				string text;
+				float fontSize = cell.Style.Font.Size > 0 ? cell.Style.Font.Size : 11f;
+				if (cell.Merge)
+				{
+					string mergeAddr = excelWorksheet.MergedCells[r, col];
+					if (string.IsNullOrWhiteSpace(mergeAddr))
 					{
 						continue;
 					}
-					if (!dictionary.TryGetValue(text2, out var value))
+					if (!mergeCache.TryGetValue(mergeAddr, out ExcelAddress merge))
 					{
-						value = new ExcelAddress(text2);
-						dictionary[text2] = value;
+						merge = new ExcelAddress(mergeAddr);
+						mergeCache[mergeAddr] = merge;
 					}
-					if (value.Start.Row != i || value.Start.Column != item2)
+					// Текст и ширину считаем только у верхней-левой ячейки объединения.
+					if (merge.Start.Row != r || merge.Start.Column != col)
 					{
 						continue;
 					}
-					num3 = value.Start.Column;
-					num4 = value.End.Column;
-					text = excelWorksheet.Cells[value.Start.Row, value.Start.Column].Value?.ToString();
+					widthStart = merge.Start.Column;
+					widthEnd = merge.End.Column;
+					ExcelRange topLeft = excelWorksheet.Cells[merge.Start.Row, merge.Start.Column];
+					text = GetRangeDisplayText(topLeft);
+					fontSize = topLeft.Style.Font.Size > 0 ? topLeft.Style.Font.Size : fontSize;
+					topLeft.Style.WrapText = true;
 				}
 				else
 				{
-					text = excelRange.Value?.ToString();
+					text = GetRangeDisplayText(cell);
+					cell.Style.WrapText = true;
 				}
 				if (string.IsNullOrWhiteSpace(text))
 				{
 					continue;
 				}
-				text = text.Replace("_x000A_", "\n");
-				double num5 = 0.0;
-				for (int j = num3; j <= num4; j++)
+				// Скрытые колонки (напр. МДП с ПА) не дают видимой ширины в Excel —
+				// иначе длинные розовые заголовки B:L считаются в 1 строку и обрезаются.
+				double widthUnits = GetVisibleColumnsWidth(excelWorksheet, widthStart, widthEnd);
+				if (widthUnits < 1.0)
 				{
-					double width = excelWorksheet.Column(j).Width;
-					num5 += ((width > 0.0) ? width : 8.43);
+					continue;
 				}
-				// Column G usually contains the longest narrative criteria text.
-				// Use a tighter char-per-width estimate there to avoid clipped wrapped lines.
-				double num6Factor = 1.9;
-				if (item2 == 7)
+				int visualLines = CountWrappedLines(text, widthUnits);
+				maxVisualLines = Math.Max(maxVisualLines, visualLines);
+				maxFontSize = Math.Max(maxFontSize, fontSize);
+
+				if (cell.Merge)
 				{
-					// For long criteria text in G use a stricter estimate.
-					num6Factor = ((text.Length > 160) ? 1.2 : 1.35);
-				}
-				int num6 = Math.Max(8, (int)Math.Round(num5 * num6Factor));
-				int num7 = 0;
-				string[] array = text.Split('\n');
-				foreach (string text3 in array)
-				{
-					int num8 = Math.Max(1, text3.TrimEnd().Length);
-					num7 += Math.Max(1, (int)Math.Ceiling((double)num8 / (double)num6));
-				}
-				if (item2 == 7 && text.Length > 120)
-				{
-					num7++;
-				}
-				num2 = Math.Max(num2, num7);
-				excelWorksheet.Cells[i, item2].Style.WrapText = true;
-				if (excelRange.Merge)
-				{
-					string text4 = excelWorksheet.MergedCells[i, item2];
-					if (!string.IsNullOrWhiteSpace(text4) && dictionary.TryGetValue(text4, out var value2) && value2.End.Row > value2.Start.Row)
+					string mergeAddr = excelWorksheet.MergedCells[r, col];
+					if (!string.IsNullOrWhiteSpace(mergeAddr) && mergeCache.TryGetValue(mergeAddr, out ExcelAddress merge) && merge.End.Row > merge.Start.Row)
 					{
-						double num9 = Math.Max(1.0, extraHeightFactor);
-						double num10 = Math.Max((double)minHeight, (double)num7 * 13.8 * num9 + 1.5);
-						list2.Add(new double[3] { value2.Start.Row, value2.End.Row, num10 });
+						double needed = EstimateRowHeightPoints(visualLines, fontSize, padFactor, minHeight);
+						verticalMergeNeeds.Add(new double[3] { merge.Start.Row, merge.End.Row, needed });
 					}
 				}
 			}
-			double num11 = Math.Max(1.0, extraHeightFactor);
-			int height = Math.Max(minHeight, (int)Math.Ceiling((double)num2 * 13.8 * num11 + 1.5));
-			excelWorksheet.Row(i).Height = height;
+			excelWorksheet.Row(r).Height = EstimateRowHeightPoints(maxVisualLines, maxFontSize, padFactor, minHeight);
+			excelWorksheet.Row(r).CustomHeight = true;
 		}
-		foreach (double[] item3 in list2)
+
+		foreach (double[] need in verticalMergeNeeds)
 		{
-			int num12 = (int)item3[0];
-			int num13 = (int)item3[1];
-			double num14 = item3[2];
-			double num15 = 0.0;
-			for (int k = num12; k <= num13; k++)
+			int mergeStart = (int)need[0];
+			int mergeEnd = (int)need[1];
+			double needed = need[2];
+			double actual = 0.0;
+			for (int r = mergeStart; r <= mergeEnd; r++)
 			{
-				num15 += ((excelWorksheet.Row(k).Height > 0.0) ? excelWorksheet.Row(k).Height : 15.0);
+				actual += excelWorksheet.Row(r).Height > 0.0 ? excelWorksheet.Row(r).Height : 15.0;
 			}
-			if (!(num15 + 0.1 < num14))
+			if (actual + 0.05 >= needed)
 			{
 				continue;
 			}
-			double num16 = num14 - num15;
-			int num17 = num13 - num12 + 1;
-			double num18 = num16 / (double)num17;
-			for (int l = num12; l <= num13; l++)
+			double add = (needed - actual) / (mergeEnd - mergeStart + 1);
+			for (int r = mergeStart; r <= mergeEnd; r++)
 			{
-				double num19 = (excelWorksheet.Row(l).Height > 0.0) ? excelWorksheet.Row(l).Height : 15.0;
-				excelWorksheet.Row(l).Height = num19 + num18;
+				double cur = excelWorksheet.Row(r).Height > 0.0 ? excelWorksheet.Row(r).Height : 15.0;
+				excelWorksheet.Row(r).Height = cur + add;
 			}
 		}
+	}
+
+	private static string GetRangeDisplayText(ExcelRange cell)
+	{
+		if (cell == null)
+		{
+			return "";
+		}
+		try
+		{
+			if (cell.IsRichText)
+			{
+				string rich = cell.RichText?.Text;
+				if (!string.IsNullOrEmpty(rich))
+				{
+					return rich;
+				}
+			}
+		}
+		catch
+		{
+		}
+		return cell.Value?.ToString() ?? "";
+	}
+
+	private static double GetVisibleColumnsWidth(ExcelWorksheet sheet, int startCol, int endCol)
+	{
+		double widthUnits = 0.0;
+		for (int c = startCol; c <= endCol; c++)
+		{
+			ExcelColumn column = sheet.Column(c);
+			if (column.Hidden)
+			{
+				continue;
+			}
+			double w = column.Width;
+			// Колонки с почти нулевой шириной фактически не видны (как на листе сводки A/D/E).
+			if (w < 0.5)
+			{
+				continue;
+			}
+			widthUnits += w;
+		}
+		return widthUnits;
+	}
+
+	private static int CountWrappedLines(string text, double columnWidthUnits)
+	{
+		text = (text ?? "").Replace("_x000A_", "\n").Replace("\r\n", "\n").Replace('\r', '\n');
+		// Ширина колонки Excel ≈ символы '0'. Кириллица Liberation Serif шире —
+		// берём 0.88, чтобы переносы не недооценивались (иначе текст обрезается).
+		double charsPerWidth = 0.88;
+		int charsPerLine = Math.Max(6, (int)Math.Floor(Math.Max(1.0, columnWidthUnits) * charsPerWidth));
+		int lines = 0;
+		foreach (string part in text.Split('\n'))
+		{
+			int len = Math.Max(1, part.TrimEnd().Length);
+			lines += Math.Max(1, (int)Math.Ceiling(len / (double)charsPerLine));
+		}
+		return Math.Max(1, lines);
+	}
+
+	private static double EstimateRowHeightPoints(int visualLines, float fontSize, double padFactor, int minHeight)
+	{
+		double size = fontSize > 0 ? fontSize : 11.0;
+		// Межстрочный интервал Excel ≈ 1.25 размера шрифта; небольшой запас на поля.
+		double height = visualLines * size * 1.25 * padFactor + 4.0;
+		return Math.Max(minHeight, Math.Ceiling(height));
 	}
 
 	public string getStr(int i, int j)

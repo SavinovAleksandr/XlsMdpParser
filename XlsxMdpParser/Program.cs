@@ -36,40 +36,15 @@ internal class Program
 						}
 						string str = excelOperations.getStr(i, columnMap.SchemeNameCol);
 						string str2 = excelOperations.getStr(i, columnMap.SchemeNumCol);
-						string text3 = excelOperations.MergedCells(i, columnMap.SchemeNameCol);
-						int num10 = Convert.ToInt32(text3.Split(new char[1] { ':' })[0].Substring(1));
-						int num11 = Convert.ToInt32(text3.Split(new char[1] { ':' })[1].Substring(1));
-						List<TNV> list2 = new List<TNV>();
-						for (int j = num10; j <= num11; )
+						if (!TryGetSchemeRowSpan(excelOperations, i, columnMap.SchemeNameCol, out int num10, out int num11))
 						{
-							while (j <= num11 && string.IsNullOrWhiteSpace(excelOperations.getStr(j, columnMap.TnvCol)))
-							{
-								j++;
-							}
-							if (j > num11)
-							{
-								break;
-							}
-							int bRow = j;
-							int eRow = j;
-							while (eRow < num11 && string.IsNullOrWhiteSpace(excelOperations.getStr(eRow + 1, 4)))
-							{
-								eRow++;
-							}
-							list2.Add(new TNV
-							{
-								Tnv = ReadLine(excelOperations, bRow, eRow, columnMap.TnvCol),
-								MdpNoPA = ReadLines(excelOperations, bRow, eRow, columnMap.MdpNoPaCol, modify: true),
-								MdpPa = ((columnMap.MdpPaCol != -1) ? ReadLines(excelOperations, bRow, eRow, columnMap.MdpPaCol, modify: true) : new List<MDP>()),
-								Adp = CellModifyString(ReadLine(excelOperations, bRow, eRow, columnMap.AdpCol)),
-								MdpNoPaCriteria = ReadLines(excelOperations, bRow, eRow, columnMap.MdpNoPaCriteriaCol),
-								MdpPaCriteria = ((columnMap.MdpPaCriteriaCol != -1) ? ReadLines(excelOperations, bRow, eRow, columnMap.MdpPaCriteriaCol) : new List<MDP>()),
-								AdpCriteria = CellModifyString(ReadLine(excelOperations, bRow, eRow, columnMap.AdpCriteriaCol)),
-								MdpNoPaDop = ReadDopLines(excelOperations, bRow, eRow, columnMap.MdpNoPaDopCol),
-								MdpPaDop = ((columnMap.MdpPaDopCol != -1) ? ReadDopLines(excelOperations, bRow, eRow, columnMap.MdpPaDopCol) : new List<string>()),
-								AdpDop = ReadDopLines(excelOperations, bRow, eRow, columnMap.AdpDopCol)
-							});
-							j = eRow + 1;
+							num10 = i;
+							num11 = i;
+						}
+						List<TNV> list2 = ReadSchemeTnvBlocks(excelOperations, columnMap, num10, num11);
+						if (list2.Count == 0)
+						{
+							list2.Add(ReadTnvBlock(excelOperations, columnMap, num10, num11, rowLabel: ""));
 						}
 						list.Add(new MdpBuilder
 						{
@@ -93,7 +68,7 @@ internal class Program
 					excelOperations.Merge(1, 1, 2, 1, hor: true, vert: true);
 					excelOperations.setVal(1, 2, "Схема сети");
 					excelOperations.Merge(1, 2, 2, 2, hor: true, vert: true);
-					excelOperations.setVal(1, 3, "ТНВ, °С");
+					excelOperations.setVal(1, 3, columnMap.HasArpm && !columnMap.HasTnv ? "гр. уст. АРПМ" : "ТНВ, °С");
 					excelOperations.Merge(1, 3, 2, 3, hor: true, vert: true);
 					excelOperations.setVal(1, 4, "МДП без ПА");
 					excelOperations.Merge(1, 4, 2, 4, hor: true, vert: true);
@@ -118,6 +93,10 @@ internal class Program
 					excelOperations.setVal(2, 12, "АДП");
 					excelOperations.Format(2, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 					excelOperations.FreezeRows(2);
+					if (!columnMap.HasTnv && !columnMap.HasArpm)
+					{
+						excelOperations.HideColumn(3);
+					}
 					if (!columnMap.HasMdpPa)
 					{
 						excelOperations.HideColumn(5);
@@ -152,11 +131,12 @@ internal class Program
 						string mergedAdpDop = GetSingleSchemeAdpDopValue(item.TnvList);
 						bool mergeAdpDop = !string.IsNullOrWhiteSpace(mergedAdpDop);
 						HashSet<int> hashSet = new HashSet<int>();
+						int tnvCount = Math.Max(1, item.TnvList.Count);
 						excelOperations.setVal(num5, 1, item.ShemeNum);
-						excelOperations.Merge(num5, 1, num5 + item.TnvList.Count - 1, 1);
+						excelOperations.Merge(num5, 1, num5 + tnvCount - 1, 1);
 						excelOperations.Format(num5, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 						excelOperations.setVal(num5, 2, item.ShemeName);
-						excelOperations.Merge(num5, 2, num5 + item.TnvList.Count - 1, 2);
+						excelOperations.Merge(num5, 2, num5 + tnvCount - 1, 2);
 						excelOperations.Format(num5, 2, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Center);
 						foreach (TNV tnv in item.TnvList)
 						{
@@ -193,8 +173,13 @@ internal class Program
 							WriteColoredMdpBlocks(excelOperations, num5, 4, list4.Concat(list5).ToList(), list11, criteriaColorMap);
 							List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => mDP.Criteria != "").ToList();
 							List<MDP> list8 = list7.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
-							List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
-							if (list9.Count <= 1)
+							List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+							bool hasPaSections = list9.Any((MDP m) => m.Criteria.StartsWith("—", StringComparison.Ordinal) || m.Criteria.StartsWith("[", StringComparison.Ordinal));
+							if (!hasPaSections)
+							{
+								list9 = list9.OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
+							}
+							if (list9.Count(m => !m.Criteria.StartsWith("—", StringComparison.Ordinal) && !m.Criteria.StartsWith("[", StringComparison.Ordinal)) <= 1)
 							{
 								list8.Clear();
 							}
@@ -206,7 +191,12 @@ internal class Program
 									Criteria = "Минимальное из:"
 								});
 							}
-							List<MDP> list12 = tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != "").OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
+							List<MDP> list12 = tnv.MdpPaCriteria.Where((MDP mDP) => mDP.Criteria != "").ToList();
+							bool hasPaCritSections = list12.Any((MDP m) => m.Criteria.StartsWith("—", StringComparison.Ordinal) || m.Criteria.StartsWith("[", StringComparison.Ordinal));
+							if (!hasPaCritSections)
+							{
+								list12 = list12.OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
+							}
 							if (columnMap.HasMdpPa)
 							{
 								WriteColoredMdpBlocks(excelOperations, num5, 5, list8.Concat(list9).ToList(), list12, criteriaColorMap);
@@ -289,8 +279,11 @@ internal class Program
 							}
 						}
 						int rowHeight2 = EstimateMergedRowHeight(item.ShemeName, array[1], num12);
-						EnsureMergedSchemeBodyHeight(excelOperations, num6, num5 - 1, rowHeight2);
-						excelOperations.GroupRows(num4 + 1, num5 - 1, 1, hide: false);
+						if (num5 - 1 >= num6)
+						{
+							EnsureMergedSchemeBodyHeight(excelOperations, num6, num5 - 1, rowHeight2);
+							excelOperations.GroupRows(num4 + 1, num5 - 1, 1, hide: false);
+						}
 						num4 = num5;
 					}
 					excelOperations.Font("Liberation Serif", num12);
@@ -303,22 +296,30 @@ internal class Program
 					{
 						excelOperations.AutoFitWithMaxWidth(n, array[n - 1]);
 					}
+					// AutoFit снимает Hidden — прячем колонки снова.
+					if (!columnMap.HasTnv && !columnMap.HasArpm)
+					{
+						excelOperations.HideColumn(3);
+					}
 					if (!columnMap.HasMdpPa)
 					{
 						excelOperations.HideColumn(5);
 						excelOperations.HideColumn(8);
 						excelOperations.HideColumn(11);
 					}
-					excelOperations.AutoFitSheetRowsByContent("new", 3, 15, 1.1, new int[7] { 2, 4, 5, 6, 7, 8, 9 });
+					// Высота строк строго по тексту во всех колонках; ширину не трогаем.
+					excelOperations.AutoFitSheetRowsByContent("new", 3, 15, 1.0, new int[11] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 });
 					excelOperations.Borders(1, 1, num4 - 1, array.Count());
 					excelOperations.GroupRowsPosition();
 					excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", "new", dictionary);
 					if (!string.IsNullOrWhiteSpace(summaryB1Text))
 					{
-						excelOperations.SetSheetCellValue("Обшая информация о сечении", "B1", summaryB1Text, wrap: true);
+						// Справа (C1), в том же стиле, что исходный блок «УТВЕРЖДАЮ» (Говорун).
+						excelOperations.SetSummaryApprovalBlock("Обшая информация о сечении", "C1", summaryB1Text);
 					}
 					excelOperations.SetSheetCellAlignment("Обшая информация о сечении", "A3", ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-					excelOperations.AutoFitSheetRowsByContent("Обшая информация о сечении", 5);
+					// С 1-й строки: блок УТВЕРЖДАЮ (C1), заголовок (B3) и весь текст сводки.
+					excelOperations.AutoFitSheetRowsByContent("Обшая информация о сечении", 1, 15, 1.0);
 					excelOperations.ConfigureSheetForPrint("Обшая информация о сечении");
 					excelOperations.ConfigureSheetForPrint("new", repeatTopTwoRows: true);
 					if (!Directory.Exists(inputJob.OutputDirectory))
@@ -507,20 +508,65 @@ internal class Program
 
 	private static ColumnMap ResolveColumnMap(ExcelOperations ex)
 	{
-		HeaderScan headerScan = HeaderScan.Create(ex, 40);
+		HeaderScan headerScan = HeaderScan.Create(ex, 50);
 		int schemeNumCol = headerScan.FindFirst((HeaderCell h) => h.Row1.Contains("№") || h.Row2.Contains("№") || h.All.Contains("nпп"), 2);
 		int schemeNameCol = headerScan.FindFirst((HeaderCell h) => h.All.Contains("схемасети"), 3);
-		int tnvCol = headerScan.FindFirst((HeaderCell h) => h.All.Contains("тнв"), 4);
+		int tnvCol = headerScan.FindFirst((HeaderCell h) => h.All.Contains("тнв"), -1);
+		int arpmCol = headerScan.FindFirst((HeaderCell h) => h.All.Contains("арпм") && !h.HasMdpNoPa && !h.HasMdpPa && !h.HasAdp && !h.IsCriteriaGroup && !h.IsDopGroup, -1);
 		int mdpNoPaCol = headerScan.FindFirst((HeaderCell h) => h.HasMdpNoPa && !h.IsCriteriaGroup && !h.IsDopGroup, 5);
 		int mdpPaCol = headerScan.FindFirst((HeaderCell h) => h.HasMdpPa && !h.IsCriteriaGroup && !h.IsDopGroup, -1);
-		int adpCol = headerScan.FindFirst((HeaderCell h) => h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa && !h.IsCriteriaGroup && !h.IsDopGroup, (mdpPaCol != -1) ? 7 : 6);
-		int mdpNoPaCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasMdpNoPa, (mdpPaCol != -1) ? 8 : 7);
-		int mdpPaCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasMdpPa, (mdpPaCol != -1) ? 9 : (-1));
-		int adpCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa, (mdpPaCol != -1) ? 11 : 9);
-		int mdpNoPaDopCol = headerScan.FindFirst((HeaderCell h) => h.IsDopGroup && h.HasMdpNoPa, 12);
-		int mdpPaDopCol = headerScan.FindFirst((HeaderCell h) => h.IsDopGroup && h.HasMdpPa, (mdpPaCol != -1) ? 13 : (-1));
-		int adpDopCol = headerScan.FindFirst((HeaderCell h) => h.IsDopGroup && h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa, 14);
-		bool hasMdpPa = mdpPaCol != -1 || mdpPaCriteriaCol != -1 || mdpPaDopCol != -1;
+		// АОПО в зоне МДП (после ТНВ / рядом с «МДП без ПА»). Короткие «АОПО В-Х» до ТНВ — не МДП с ПА.
+		int aopoZoneStart = Math.Max(tnvCol > 0 ? tnvCol + 1 : 0, mdpNoPaCol > 0 ? mdpNoPaCol : 0);
+		if (aopoZoneStart <= 0)
+		{
+			aopoZoneStart = Math.Max(schemeNameCol + 1, 4);
+		}
+		List<PaColumn> aopoValueCols = FilterAopoInZone(headerScan.FindAll((HeaderCell h) => h.IsAopo && !h.IsCriteriaGroup && !h.IsDopGroup && !h.HasAdp), aopoZoneStart, mdpNoPaCol);
+		List<PaColumn> aopoCriteriaCols = FilterAopoInZone(headerScan.FindAll((HeaderCell h) => h.IsAopo && h.IsCriteriaGroup), aopoZoneStart, -1);
+		List<PaColumn> aopoDopCols = FilterAopoInZone(headerScan.FindAll((HeaderCell h) => h.IsAopo && h.IsDopGroup), aopoZoneStart, -1);
+		if (mdpPaCol == -1 && aopoValueCols.Count > 0)
+		{
+			mdpPaCol = aopoValueCols[0].Col;
+			aopoValueCols = aopoValueCols.Skip(1).ToList();
+		}
+		else if (mdpPaCol != -1)
+		{
+			aopoValueCols = aopoValueCols.Where((PaColumn p) => p.Col != mdpPaCol).ToList();
+		}
+		int adpCol = headerScan.FindFirst((HeaderCell h) => h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa && !h.IsAopo && !h.IsCriteriaGroup && !h.IsDopGroup, -1);
+		if (adpCol == -1)
+		{
+			adpCol = headerScan.FindFirst((HeaderCell h) => h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa && !h.IsCriteriaGroup && !h.IsDopGroup, (mdpPaCol != -1 || aopoValueCols.Count > 0) ? 7 : 6);
+		}
+		int mdpNoPaCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasMdpNoPa, -1);
+		int mdpPaCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasMdpPa, -1);
+		if (mdpPaCriteriaCol == -1 && aopoCriteriaCols.Count > 0)
+		{
+			mdpPaCriteriaCol = aopoCriteriaCols[0].Col;
+			aopoCriteriaCols = aopoCriteriaCols.Skip(1).ToList();
+		}
+		else if (mdpPaCriteriaCol != -1)
+		{
+			aopoCriteriaCols = aopoCriteriaCols.Where((PaColumn p) => p.Col != mdpPaCriteriaCol).ToList();
+		}
+		int adpCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa && !h.IsAopo, -1);
+		if (adpCriteriaCol == -1)
+		{
+			adpCriteriaCol = headerScan.FindFirst((HeaderCell h) => h.IsCriteriaGroup && h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa, -1);
+		}
+		int mdpNoPaDopCol = headerScan.FindFirst((HeaderCell h) => h.IsDopGroup && h.HasMdpNoPa, -1);
+		int mdpPaDopCol = headerScan.FindFirst((HeaderCell h) => h.IsDopGroup && h.HasMdpPa, -1);
+		if (mdpPaDopCol == -1 && aopoDopCols.Count > 0)
+		{
+			mdpPaDopCol = aopoDopCols[0].Col;
+			aopoDopCols = aopoDopCols.Skip(1).ToList();
+		}
+		int adpDopCol = headerScan.FindFirst((HeaderCell h) => h.IsDopGroup && h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa && !h.IsAopo, -1);
+		if (adpDopCol == -1)
+		{
+			adpDopCol = headerScan.FindFirst((HeaderCell h) => h.IsDopGroup && h.HasAdp && !h.HasMdpNoPa && !h.HasMdpPa, -1);
+		}
+		bool hasMdpPa = mdpPaCol != -1 || mdpPaCriteriaCol != -1 || mdpPaDopCol != -1 || aopoValueCols.Count > 0 || aopoCriteriaCols.Count > 0;
 		if (!hasMdpPa)
 		{
 			mdpPaCol = -1;
@@ -532,6 +578,9 @@ internal class Program
 			SchemeNumCol = schemeNumCol,
 			SchemeNameCol = schemeNameCol,
 			TnvCol = tnvCol,
+			ArpmCol = arpmCol,
+			HasTnv = tnvCol != -1,
+			HasArpm = arpmCol != -1,
 			MdpNoPaCol = mdpNoPaCol,
 			MdpPaCol = mdpPaCol,
 			AdpCol = adpCol,
@@ -541,8 +590,37 @@ internal class Program
 			MdpNoPaDopCol = mdpNoPaDopCol,
 			MdpPaDopCol = mdpPaDopCol,
 			AdpDopCol = adpDopCol,
-			HasMdpPa = hasMdpPa
+			HasMdpPa = hasMdpPa,
+			ExtraPaValueCols = aopoValueCols,
+			ExtraPaCriteriaCols = aopoCriteriaCols,
+			ExtraPaDopCols = aopoDopCols
 		};
+	}
+
+	private static List<PaColumn> FilterAopoInZone(List<HeaderCell> cells, int zoneStart, int excludeCol)
+	{
+		return cells
+			.Where((HeaderCell h) => h.Col >= zoneStart && h.Col != excludeCol)
+			.Select((HeaderCell h) => new PaColumn { Col = h.Col, Title = GetShortPaTitle(h) })
+			.ToList();
+	}
+
+	private static string GetShortPaTitle(HeaderCell cell)
+	{
+		string text = (cell.Raw1 ?? "").Trim();
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			text = (cell.Raw2 ?? "").Trim();
+		}
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			text = (cell.Raw3 ?? "").Trim();
+		}
+		if (text.Length > 48)
+		{
+			text = text.Substring(0, 48).Trim() + "…";
+		}
+		return string.IsNullOrWhiteSpace(text) ? ("АОПО " + cell.Col) : text;
 	}
 
 	private static string NormalizeHeader(string text)
@@ -566,10 +644,10 @@ internal class Program
 			List<HeaderCell> list = new List<HeaderCell>(maxCol);
 			for (int i = 1; i <= maxCol; i++)
 			{
-				string row = NormalizeHeader(GetHeaderCellText(ex, 1, i));
-				string row2 = NormalizeHeader(GetHeaderCellText(ex, 2, i));
-				string row3 = NormalizeHeader(GetHeaderCellText(ex, 3, i));
-				list.Add(new HeaderCell(i, row, row2, row3));
+				string raw1 = GetHeaderCellText(ex, 1, i);
+				string raw2 = GetHeaderCellText(ex, 2, i);
+				string raw3 = GetHeaderCellText(ex, 3, i);
+				list.Add(new HeaderCell(i, NormalizeHeader(raw1), NormalizeHeader(raw2), NormalizeHeader(raw3), raw1, raw2, raw3));
 			}
 			return new HeaderScan(list);
 		}
@@ -584,6 +662,19 @@ internal class Program
 				}
 			}
 			return fallback;
+		}
+
+		public List<HeaderCell> FindAll(Func<HeaderCell, bool> predicate)
+		{
+			List<HeaderCell> list = new List<HeaderCell>();
+			foreach (HeaderCell cell in _cells)
+			{
+				if (predicate(cell))
+				{
+					list.Add(cell);
+				}
+			}
+			return list;
 		}
 
 		private static string GetHeaderCellText(ExcelOperations ex, int row, int col)
@@ -640,6 +731,12 @@ internal class Program
 
 		public string Row3 { get; }
 
+		public string Raw1 { get; }
+
+		public string Raw2 { get; }
+
+		public string Raw3 { get; }
+
 		public string All { get; }
 
 		public bool HasMdpNoPa => All.Contains("мдпбезпа");
@@ -648,18 +745,30 @@ internal class Program
 
 		public bool HasAdp => All.Contains("адп");
 
+		public bool IsAopo => All.Contains("аопо");
+
 		public bool IsCriteriaGroup => Row1.Contains("критер") || Row2.Contains("критер") || Row3.Contains("критер") || All.Contains("критер");
 
 		public bool IsDopGroup => Row1.Contains("контрольдоп") || Row2.Contains("контрольдоп") || Row3.Contains("контрольдоп") || All.Contains("дополнит");
 
-		public HeaderCell(int col, string row1, string row2, string row3)
+		public HeaderCell(int col, string row1, string row2, string row3, string raw1 = "", string raw2 = "", string raw3 = "")
 		{
 			Col = col;
 			Row1 = row1;
 			Row2 = row2;
 			Row3 = row3;
+			Raw1 = raw1 ?? "";
+			Raw2 = raw2 ?? "";
+			Raw3 = raw3 ?? "";
 			All = row1 + row2 + row3;
 		}
+	}
+
+	private sealed class PaColumn
+	{
+		public int Col { get; set; }
+
+		public string Title { get; set; } = "";
 	}
 
 	private sealed class ColumnMap
@@ -669,6 +778,12 @@ internal class Program
 		public int SchemeNameCol { get; set; }
 
 		public int TnvCol { get; set; }
+
+		public int ArpmCol { get; set; }
+
+		public bool HasTnv { get; set; }
+
+		public bool HasArpm { get; set; }
 
 		public int MdpNoPaCol { get; set; }
 
@@ -689,6 +804,28 @@ internal class Program
 		public int AdpDopCol { get; set; }
 
 		public bool HasMdpPa { get; set; }
+
+		public List<PaColumn> ExtraPaValueCols { get; set; } = new List<PaColumn>();
+
+		public List<PaColumn> ExtraPaCriteriaCols { get; set; } = new List<PaColumn>();
+
+		public List<PaColumn> ExtraPaDopCols { get; set; } = new List<PaColumn>();
+
+		public int BlockMarkerCol
+		{
+			get
+			{
+				if (HasTnv)
+				{
+					return TnvCol;
+				}
+				if (HasArpm)
+				{
+					return ArpmCol;
+				}
+				return -1;
+			}
+		}
 	}
 
 	private sealed class InputJob
@@ -698,8 +835,163 @@ internal class Program
 		public string OutputDirectory { get; set; } = "";
 	}
 
+	private static bool TryGetSchemeRowSpan(ExcelOperations ex, int row, int schemeNameCol, out int startRow, out int endRow)
+	{
+		startRow = row;
+		endRow = row;
+		string text = ex.MergedCells(row, schemeNameCol);
+		if (string.IsNullOrWhiteSpace(text) || !text.Contains(":"))
+		{
+			return false;
+		}
+		string[] parts = text.Split(':');
+		if (parts.Length < 2)
+		{
+			return false;
+		}
+		Match m1 = Regex.Match(parts[0], "(\\d+)$");
+		Match m2 = Regex.Match(parts[1], "(\\d+)$");
+		if (!m1.Success || !m2.Success)
+		{
+			return false;
+		}
+		startRow = Convert.ToInt32(m1.Groups[1].Value);
+		endRow = Convert.ToInt32(m2.Groups[1].Value);
+		if (endRow < startRow)
+		{
+			int tmp = startRow;
+			startRow = endRow;
+			endRow = tmp;
+		}
+		return true;
+	}
+
+	private static List<TNV> ReadSchemeTnvBlocks(ExcelOperations ex, ColumnMap columnMap, int schemeStart, int schemeEnd)
+	{
+		List<TNV> list = new List<TNV>();
+		int markerCol = columnMap.BlockMarkerCol;
+		if (markerCol == -1)
+		{
+			list.Add(ReadTnvBlock(ex, columnMap, schemeStart, schemeEnd, rowLabel: ""));
+			return list;
+		}
+		for (int j = schemeStart; j <= schemeEnd; )
+		{
+			while (j <= schemeEnd && string.IsNullOrWhiteSpace(ex.getStr(j, markerCol)))
+			{
+				j++;
+			}
+			if (j > schemeEnd)
+			{
+				break;
+			}
+			int bRow = j;
+			int eRow = j;
+			while (eRow < schemeEnd && string.IsNullOrWhiteSpace(ex.getStr(eRow + 1, markerCol)))
+			{
+				eRow++;
+			}
+			string label = columnMap.HasTnv
+				? ReadLine(ex, bRow, eRow, columnMap.TnvCol)
+				: ReadLine(ex, bRow, eRow, columnMap.ArpmCol);
+			list.Add(ReadTnvBlock(ex, columnMap, bRow, eRow, label));
+			j = eRow + 1;
+		}
+		return list;
+	}
+
+	private static TNV ReadTnvBlock(ExcelOperations ex, ColumnMap columnMap, int bRow, int eRow, string rowLabel)
+	{
+		List<PaColumn> paValueCols = BuildPaColumnList(columnMap.MdpPaCol, columnMap.ExtraPaValueCols);
+		List<PaColumn> paCriteriaCols = BuildPaColumnList(columnMap.MdpPaCriteriaCol, columnMap.ExtraPaCriteriaCols);
+		List<PaColumn> paDopCols = BuildPaColumnList(columnMap.MdpPaDopCol, columnMap.ExtraPaDopCols);
+		return new TNV
+		{
+			Tnv = rowLabel ?? "",
+			MdpNoPA = (columnMap.MdpNoPaCol != -1) ? ReadLines(ex, bRow, eRow, columnMap.MdpNoPaCol, modify: true) : new List<MDP>(),
+			MdpPa = MergePaValueColumns(ex, bRow, eRow, paValueCols, modify: true),
+			Adp = CellModifyString(ReadLine(ex, bRow, eRow, columnMap.AdpCol)),
+			MdpNoPaCriteria = (columnMap.MdpNoPaCriteriaCol != -1) ? ReadLines(ex, bRow, eRow, columnMap.MdpNoPaCriteriaCol) : new List<MDP>(),
+			MdpPaCriteria = MergePaValueColumns(ex, bRow, eRow, paCriteriaCols, modify: false),
+			AdpCriteria = CellModifyString(ReadLine(ex, bRow, eRow, columnMap.AdpCriteriaCol)),
+			MdpNoPaDop = (columnMap.MdpNoPaDopCol != -1) ? ReadDopLines(ex, bRow, eRow, columnMap.MdpNoPaDopCol) : new List<string>(),
+			MdpPaDop = MergePaDopColumns(ex, bRow, eRow, paDopCols),
+			AdpDop = (columnMap.AdpDopCol != -1) ? ReadDopLines(ex, bRow, eRow, columnMap.AdpDopCol) : new List<string>()
+		};
+	}
+
+	private static List<PaColumn> BuildPaColumnList(int primaryCol, List<PaColumn> extras)
+	{
+		List<PaColumn> list = new List<PaColumn>();
+		if (primaryCol != -1)
+		{
+			list.Add(new PaColumn { Col = primaryCol, Title = "" });
+		}
+		if (extras != null)
+		{
+			list.AddRange(extras);
+		}
+		return list;
+	}
+
+	private static List<MDP> MergePaValueColumns(ExcelOperations ex, int bRow, int eRow, List<PaColumn> cols, bool modify)
+	{
+		List<MDP> target = new List<MDP>();
+		if (cols == null || cols.Count == 0)
+		{
+			return target;
+		}
+		foreach (PaColumn pa in cols)
+		{
+			List<MDP> meaningful = ReadLines(ex, bRow, eRow, pa.Col, modify)
+				.Where((MDP m) => !string.IsNullOrWhiteSpace(m.Criteria))
+				.ToList();
+			if (meaningful.Count == 0)
+			{
+				continue;
+			}
+			if (target.Count > 0 && !string.IsNullOrWhiteSpace(pa.Title))
+			{
+				target.Add(new MDP
+				{
+					Num = -1,
+					Criteria = "— " + pa.Title + " —"
+				});
+			}
+			target.AddRange(meaningful);
+		}
+		return target;
+	}
+
+	private static List<string> MergePaDopColumns(ExcelOperations ex, int bRow, int eRow, List<PaColumn> cols)
+	{
+		List<string> target = new List<string>();
+		if (cols == null || cols.Count == 0)
+		{
+			return target;
+		}
+		foreach (PaColumn pa in cols)
+		{
+			List<string> lines = ReadDopLines(ex, bRow, eRow, pa.Col).Where((string s) => !string.IsNullOrWhiteSpace(s)).ToList();
+			if (lines.Count == 0)
+			{
+				continue;
+			}
+			if (target.Count > 0 && !string.IsNullOrWhiteSpace(pa.Title))
+			{
+				target.Add("— " + pa.Title + " —");
+			}
+			target.AddRange(lines);
+		}
+		return target;
+	}
+
 	public static string ReadLine(ExcelOperations ex, int bRow, int eRow, int col)
 	{
+		if (col <= 0)
+		{
+			return "";
+		}
 		string result = "";
 		for (int i = bRow; i <= eRow; i++)
 		{
@@ -711,23 +1003,13 @@ internal class Program
 		return result;
 	}
 
-	public static List<string> ReadDopLines(ExcelOperations ex, int bRow, int eRow, int col)
-	{
-		List<string> list = new List<string>();
-		for (int i = bRow; i <= eRow; i++)
-		{
-			string text = ex.getStr(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
-			if (text != "" && text != " ")
-			{
-				list.Add(text);
-			}
-		}
-		return list;
-	}
-
 	public static List<MDP> ReadLines(ExcelOperations ex, int bRow, int eRow, int col, bool modify = false)
 	{
 		List<MDP> list = new List<MDP>();
+		if (col <= 0)
+		{
+			return list;
+		}
 		for (int i = bRow; i <= eRow; i++)
 		{
 			string text = ex.getStr(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
@@ -743,7 +1025,7 @@ internal class Program
 				}
 				else
 				{
-					Match match = Regex.Match(text, "^(-?\\d+)\\)\\s*(.*)$");
+					Match match = Regex.Match(text, "^(-?\\d+)\\)\\s*(.*)$", RegexOptions.Singleline);
 					if (match.Success)
 					{
 						int num = Convert.ToInt32(match.Groups[1].Value);
@@ -751,7 +1033,7 @@ internal class Program
 						list.Add(new MDP
 						{
 							Num = num,
-								Criteria = ReorderNumberedBlocks(modify ? CellModifyString(text2) : text2)
+							Criteria = ReorderNumberedBlocks(modify ? CellModifyString(text2) : text2)
 						});
 					}
 					else
@@ -759,7 +1041,7 @@ internal class Program
 						list.Add(new MDP
 						{
 							Num = -1,
-								Criteria = ReorderNumberedBlocks(modify ? CellModifyString(text) : text)
+							Criteria = ReorderNumberedBlocks(modify ? CellModifyString(text) : text)
 						});
 					}
 				}
@@ -776,17 +1058,156 @@ internal class Program
 		return list;
 	}
 
+	public static List<string> ReadDopLines(ExcelOperations ex, int bRow, int eRow, int col)
+	{
+		List<string> list = new List<string>();
+		if (col <= 0)
+		{
+			return list;
+		}
+		for (int i = bRow; i <= eRow; i++)
+		{
+			string text = ex.getStr(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
+			if (text != "" && text != " ")
+			{
+				list.Add(text);
+			}
+		}
+		return list;
+	}
+
 	public static string CellModifyString(string text)
 	{
-		text = (text ?? "").Replace("_x000A_", Environment.NewLine).Trim();
-		if (TryFormatNestedIfCriteria(text, out var formatted))
+		text = StripLeadingItemNumber((text ?? "").Replace("_x000A_", Environment.NewLine).Trim());
+		if (string.IsNullOrWhiteSpace(text))
 		{
-			return formatted;
+			return "";
+		}
+		if (TryFormatNestedIfCriteria(text, out var formattedIf))
+		{
+			return formattedIf;
+		}
+		if (TryFormatCaseCriteria(text, out var formattedCase))
+		{
+			return formattedCase;
 		}
 		text = Regex.Replace(text, "\\bMIN\\b", "min");
 		text = text.Replace("==", "=");
+		if (!AreBracketsBalanced(text))
+		{
+			return text;
+		}
 		BracketNode node = Parse(text);
 		return Reconstruct(node) ?? "";
+	}
+
+	private static string StripLeadingItemNumber(string text)
+	{
+		Match match = Regex.Match(text ?? "", "^(-?\\d+)\\)\\s*(.*)$", RegexOptions.Singleline);
+		return match.Success ? match.Groups[2].Value.Trim() : (text ?? "");
+	}
+
+	private static bool TryFormatCaseCriteria(string text, out string formatted)
+	{
+		formatted = "";
+		string raw = TrimOuterWrapping(text).Trim();
+		if (!raw.StartsWith("case(", StringComparison.OrdinalIgnoreCase) || !raw.EndsWith(")"))
+		{
+			return false;
+		}
+		string inside = raw.Substring(5, raw.Length - 6);
+		List<string> args = SplitTopLevelArgs(inside);
+		if (args.Count < 3)
+		{
+			return false;
+		}
+		string variable = args[0].Trim();
+		StringBuilder sb = new StringBuilder();
+		int i = 1;
+		int written = 0;
+		while (i + 1 < args.Count)
+		{
+			string condRaw = args[i].Trim();
+			string valueRaw = args[i + 1].Trim();
+			i += 2;
+			if (!TryParseIsCall(condRaw, out string isValue))
+			{
+				continue;
+			}
+			string value = UnwrapReturn(valueRaw);
+			if (written > 0)
+			{
+				sb.Append(',');
+				sb.Append(Environment.NewLine);
+			}
+			sb.Append(variable);
+			sb.Append('=');
+			sb.Append(isValue);
+			sb.Append(':');
+			sb.Append(Environment.NewLine);
+			sb.Append(NormalizeMathExpression(value));
+			written++;
+		}
+		if (written == 0)
+		{
+			return false;
+		}
+		formatted = sb.ToString();
+		return true;
+	}
+
+	private static List<string> SplitTopLevelArgs(string text)
+	{
+		List<string> list = new List<string>();
+		int depth = 0;
+		int start = 0;
+		for (int i = 0; i < text.Length; i++)
+		{
+			char c = text[i];
+			if (c == '(')
+			{
+				depth++;
+			}
+			else if (c == ')')
+			{
+				depth--;
+			}
+			else if (c == ',' && depth == 0)
+			{
+				list.Add(text.Substring(start, i - start).Trim());
+				start = i + 1;
+			}
+		}
+		if (start <= text.Length)
+		{
+			list.Add(text.Substring(start).Trim());
+		}
+		return list;
+	}
+
+	private static bool TryParseIsCall(string text, out string value)
+	{
+		value = "";
+		string raw = TrimOuterWrapping(text).Trim();
+		Match match = Regex.Match(raw, "^is\\((.*)\\)$", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+		if (!match.Success)
+		{
+			return false;
+		}
+		value = match.Groups[1].Value.Trim();
+		return !string.IsNullOrWhiteSpace(value);
+	}
+
+	private static string UnwrapReturn(string text)
+	{
+		string raw = TrimOuterWrapping(text).Trim();
+		Match match = Regex.Match(raw, "^return\\s*\\((.*)\\)$", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+		if (match.Success)
+		{
+			return match.Groups[1].Value.Trim();
+		}
+		match = Regex.Match(raw, "^return\\s+(.+)$", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+		return match.Success ? match.Groups[1].Value.Trim() : raw;
 	}
 
 	private sealed class IfExprNode
