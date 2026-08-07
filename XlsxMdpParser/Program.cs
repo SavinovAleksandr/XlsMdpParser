@@ -98,16 +98,12 @@ internal class Program
 					excelOperations.setVal(2, 12, "АДП");
 					excelOperations.Format(2, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 					excelOperations.FreezeRows(2);
+					OutputColumnFlags outCols = DetectOutputColumnFlags(list);
 					if (!columnMap.HasTnv && !columnMap.HasArpm)
 					{
 						excelOperations.HideColumn(3);
 					}
-					if (!columnMap.HasMdpPa)
-					{
-						excelOperations.HideColumn(5);
-						excelOperations.HideColumn(8);
-						excelOperations.HideColumn(11);
-					}
+					HideEmptyOutputColumns(excelOperations, outCols);
 					excelOperations.FormatCells(1, 1, 2, array.Count(), bold: true, italic: false, Color.PowderBlue.ToArgb());
 					int num4 = 3;
 					Dictionary<string, int> dictionary = new Dictionary<string, int>();
@@ -133,7 +129,7 @@ internal class Program
 						excelOperations.Height(num4, Math.Max(20, rowHeight));
 						int num5 = num4 + 1;
 						int num6 = num5;
-						string mergedAdpDop = GetSingleSchemeAdpDopValue(item.TnvList);
+						string mergedAdpDop = outCols.HasCtrlAdp ? GetSingleSchemeAdpDopValue(item.TnvList) : "";
 						bool mergeAdpDop = !string.IsNullOrWhiteSpace(mergedAdpDop);
 						HashSet<int> hashSet = new HashSet<int>();
 						int tnvCount = Math.Max(1, item.TnvList.Count);
@@ -205,7 +201,7 @@ internal class Program
 							{
 								list12 = list12.OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
 							}
-							if (columnMap.HasMdpPa)
+							if (outCols.HasMdpPa)
 							{
 								WriteColoredMdpBlocks(excelOperations, num5, 5, list8.Concat(list9).ToList(), list12, criteriaColorMap);
 							}
@@ -214,7 +210,7 @@ internal class Program
 								excelOperations.setVal(num5, 5, "");
 								excelOperations.Format(num5, 5, ExcelHorizontalAlignment.Left, ExcelVerticalAlignment.Top);
 							}
-							if (!IsDashOrEmpty(tnv.Adp))
+							if (outCols.HasAdp && !IsDashOrEmpty(tnv.Adp))
 							{
 								excelOperations.setVal(num4 + 1, 6, tnv.Adp, wrap: true);
 								excelOperations.Merge(num4 + 1, 6, num4 + item.TnvList.Count, 6);
@@ -236,9 +232,16 @@ internal class Program
 								string text5 = WriteColoredCriteriaBlocks(excelOperations, num5, 7, list11, criteriaColorMap);
 								excelOperations.CellComment(num5, 4, text5);
 							}
-							string text7 = WriteColoredCriteriaBlocks(excelOperations, num5, 8, list12, criteriaColorMap);
-							excelOperations.CellComment(num5, 5, text7);
-							if (schemeHasAdp && !IsDashOrEmpty(tnv.AdpCriteria))
+							if (outCols.HasMdpPa)
+							{
+								string text7 = WriteColoredCriteriaBlocks(excelOperations, num5, 8, list12, criteriaColorMap);
+								excelOperations.CellComment(num5, 5, text7);
+							}
+							else
+							{
+								excelOperations.setVal(num5, 8, "");
+							}
+							if (schemeHasAdp && outCols.HasAdp && !IsDashOrEmpty(tnv.AdpCriteria))
 							{
 								excelOperations.setVal(num4 + 1, 9, tnv.AdpCriteria, wrap: true);
 								excelOperations.Merge(num4 + 1, 9, num4 + item.TnvList.Count, 9);
@@ -246,18 +249,24 @@ internal class Program
 								excelOperations.Format(num4 + 1, 9, flagAdpCritMultiline ? ExcelHorizontalAlignment.Left : ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
 							}
 							string text9 = "";
-							foreach (string item6 in tnv.MdpNoPaDop)
+							if (outCols.HasCtrlMdpNoPa)
 							{
-								string text10 = ((item6 == tnv.MdpNoPaDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-								text9 = text9 + item6 + text10;
+								foreach (string item6 in tnv.MdpNoPaDop)
+								{
+									string text10 = ((item6 == tnv.MdpNoPaDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
+									text9 = text9 + item6 + text10;
+								}
 							}
 							excelOperations.setVal(num5, 10, text9);
 							excelOperations.Format(num5, 10, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 							string text11 = "";
-							foreach (string item7 in tnv.MdpPaDop)
+							if (outCols.HasCtrlMdpPa)
 							{
-								string text12 = ((item7 == tnv.MdpPaDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-								text11 = text11 + item7 + text12;
+								foreach (string item7 in tnv.MdpPaDop)
+								{
+									string text12 = ((item7 == tnv.MdpPaDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
+									text11 = text11 + item7 + text12;
+								}
 							}
 							excelOperations.setVal(num5, 11, text11);
 							excelOperations.Format(num5, 11, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
@@ -330,12 +339,7 @@ internal class Program
 					{
 						excelOperations.HideColumn(3);
 					}
-					if (!columnMap.HasMdpPa)
-					{
-						excelOperations.HideColumn(5);
-						excelOperations.HideColumn(8);
-						excelOperations.HideColumn(11);
-					}
+					HideEmptyOutputColumns(excelOperations, outCols);
 					// Высота строк строго по тексту во всех колонках; ширину не трогаем.
 					excelOperations.AutoFitSheetRowsByContent(outputSheetName, 3, 15, 1.0, new int[11] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 });
 					excelOperations.Borders(1, 1, num4 - 1, array.Count());
@@ -351,6 +355,12 @@ internal class Program
 					excelOperations.AutoFitSheetRowsByContent("Обшая информация о сечении", 1, 15, 1.0);
 					excelOperations.ConfigureSheetForPrint("Обшая информация о сечении");
 					excelOperations.ConfigureSheetForPrint(outputSheetName, repeatTopTwoRows: true);
+					// После AutoFit/печати Hidden мог сброситься — прячем снова.
+					if (!columnMap.HasTnv && !columnMap.HasArpm)
+					{
+						excelOperations.HideColumn(3);
+					}
+					HideEmptyOutputColumns(excelOperations, outCols);
 					if (!Directory.Exists(inputJob.OutputDirectory))
 					{
 						Directory.CreateDirectory(inputJob.OutputDirectory);
@@ -576,7 +586,11 @@ internal class Program
 		}
 		// Как в HTML: критерии «с ПА» — заполненные колонки между «без ПА» и «АДП»
 		// (значение часто в левой ячейке merge, а подпись «МДП с ПА» — справа).
-		List<int> paCriteriaByContent = FindPopulatedColumnsBetween(ex, mdpNoPaCriteriaCol, adpCriteriaCol, bodyStartRow: 4);
+		// Важно: колонки, входящие в merge с заголовком/ячейкой критерия АДП (типично H:I
+		// при подписи «АДП» на I), — это АДП, а не «МДП с ПА» (Сыктывкар и аналоги).
+		List<int> paCriteriaByContent = FindPopulatedColumnsBetween(ex, mdpNoPaCriteriaCol, adpCriteriaCol, bodyStartRow: 4)
+			.Where((int c) => !ColumnSharesMergeWith(ex, c, adpCriteriaCol, bodyStartRow: 4))
+			.ToList();
 		if (paCriteriaByContent.Count > 0)
 		{
 			if (mdpPaCriteriaCol == -1 || !ColumnHasMeaningfulBody(ex, mdpPaCriteriaCol, 4))
@@ -596,6 +610,12 @@ internal class Program
 		else if (mdpPaCriteriaCol != -1)
 		{
 			aopoCriteriaCols = aopoCriteriaCols.Where((PaColumn p) => p.Col != mdpPaCriteriaCol).ToList();
+		}
+		else
+		{
+			// Между «без ПА» и «АДП» пусто (или только merge АДП) — сбрасываем ложный PA.
+			mdpPaCriteriaCol = -1;
+			aopoCriteriaCols = new List<PaColumn>();
 		}
 		int mdpNoPaDopCol = headerScan.FindFirst((HeaderCell h) => h.IsDopGroup && h.HasMdpNoPa, -1);
 		int mdpPaDopCol = headerScan.FindFirst((HeaderCell h) => h.IsDopGroup && h.HasMdpPa, -1);
@@ -663,6 +683,24 @@ internal class Program
 			}
 		}
 		return list;
+	}
+
+	private static bool ColumnSharesMergeWith(ExcelOperations ex, int col, int otherCol, int bodyStartRow)
+	{
+		if (col <= 0 || otherCol <= 0 || col == otherCol)
+		{
+			return col > 0 && otherCol > 0 && col == otherCol;
+		}
+		int last = ex.LastColumnRow();
+		int limit = Math.Min(last, bodyStartRow + 400);
+		for (int row = bodyStartRow; row <= limit; row++)
+		{
+			if (ex.SharesMerge(row, col, otherCol))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static bool ColumnHasMeaningfulBody(ExcelOperations ex, int col, int bodyStartRow)
@@ -886,6 +924,88 @@ internal class Program
 		public int Col { get; set; }
 
 		public string Title { get; set; } = "";
+	}
+
+	private sealed class OutputColumnFlags
+	{
+		public bool HasMdpPa { get; set; }
+
+		public bool HasAdp { get; set; }
+
+		public bool HasCtrlMdpNoPa { get; set; }
+
+		public bool HasCtrlMdpPa { get; set; }
+
+		public bool HasCtrlAdp { get; set; }
+	}
+
+	private static OutputColumnFlags DetectOutputColumnFlags(List<MdpBuilder> schemes)
+	{
+		OutputColumnFlags flags = new OutputColumnFlags();
+		if (schemes == null)
+		{
+			return flags;
+		}
+		foreach (MdpBuilder scheme in schemes)
+		{
+			foreach (TNV tnv in scheme.TnvList ?? new List<TNV>())
+			{
+				if (IsNotControlledPhrase(tnv.Tnv))
+				{
+					continue;
+				}
+				if (HasMeaningfulMdpItems(tnv.MdpPa) || HasMeaningfulMdpItems(tnv.MdpPaCriteria))
+				{
+					flags.HasMdpPa = true;
+				}
+				if ((tnv.MdpPaDop ?? new List<string>()).Any((string s) => !string.IsNullOrWhiteSpace(s)))
+				{
+					flags.HasMdpPa = true;
+					flags.HasCtrlMdpPa = true;
+				}
+				if (!IsDashOrEmpty(tnv.Adp))
+				{
+					flags.HasAdp = true;
+				}
+				if ((tnv.AdpDop ?? new List<string>()).Any((string s) => !string.IsNullOrWhiteSpace(s)))
+				{
+					flags.HasAdp = true;
+					flags.HasCtrlAdp = true;
+				}
+				if ((tnv.MdpNoPaDop ?? new List<string>()).Any((string s) => !string.IsNullOrWhiteSpace(s)))
+				{
+					flags.HasCtrlMdpNoPa = true;
+				}
+			}
+		}
+		return flags;
+	}
+
+	private static void HideEmptyOutputColumns(ExcelOperations excelOperations, OutputColumnFlags flags)
+	{
+		if (!flags.HasMdpPa)
+		{
+			excelOperations.HideColumn(5);
+			excelOperations.HideColumn(8);
+		}
+		if (!flags.HasAdp)
+		{
+			excelOperations.HideColumn(6);
+			excelOperations.HideColumn(9);
+		}
+		if (!flags.HasCtrlMdpNoPa)
+		{
+			excelOperations.HideColumn(10);
+		}
+		if (!flags.HasCtrlMdpPa)
+		{
+			excelOperations.HideColumn(11);
+		}
+		if (!flags.HasCtrlAdp)
+		{
+			excelOperations.HideColumn(12);
+		}
+		// Если все три «контроля» пусты — группу уже скрыли по колонкам 10–12.
 	}
 
 	private sealed class ColumnMap

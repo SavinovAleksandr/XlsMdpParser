@@ -581,6 +581,29 @@ public class ExcelOperations
 		return _ws.Cells[i, j].Value != null && !string.IsNullOrWhiteSpace(_ws.Cells[i, j].Value.ToString());
 	}
 
+	/// <summary>
+	/// True, если ячейки (row,colA) и (row,colB) входят в одно и то же объединение.
+	/// Нужно, чтобы не принимать левую ячейку merge критерия АДП за «МДП с ПА».
+	/// </summary>
+	public bool SharesMerge(int row, int colA, int colB)
+	{
+		if (colA <= 0 || colB <= 0)
+		{
+			return false;
+		}
+		if (colA == colB)
+		{
+			return true;
+		}
+		if (!_ws.Cells[row, colA].Merge || !_ws.Cells[row, colB].Merge)
+		{
+			return false;
+		}
+		string a = MergedCells(row, colA);
+		string b = MergedCells(row, colB);
+		return !string.IsNullOrWhiteSpace(a) && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+	}
+
 	public string getStr(string param)
 	{
 		return (_ws.Cells[param].Value != null) ? _ws.Cells[param].Value.ToString() : "";
