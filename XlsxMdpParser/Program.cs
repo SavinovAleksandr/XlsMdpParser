@@ -219,7 +219,8 @@ internal class Program
 								excelOperations.setVal(num4 + 1, 6, tnv.Adp, wrap: true);
 								excelOperations.Merge(num4 + 1, 6, num4 + item.TnvList.Count, 6);
 								bool flagAdpMultiline = tnv.Adp.Contains('\n') || tnv.Adp.Contains('\r');
-								excelOperations.Format(num4 + 1, 6, flagAdpMultiline ? ExcelHorizontalAlignment.Left : ExcelHorizontalAlignment.Center, flagAdpMultiline ? ExcelVerticalAlignment.Top : ExcelVerticalAlignment.Center);
+								// Top: иначе короткий текст в высоком merge визуально «прилипает» к средней ТНВ (+15).
+								excelOperations.Format(num4 + 1, 6, flagAdpMultiline ? ExcelHorizontalAlignment.Left : ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
 							}
 							if (!schemeHasMdpNoPa)
 							{
@@ -242,7 +243,7 @@ internal class Program
 								excelOperations.setVal(num4 + 1, 9, tnv.AdpCriteria, wrap: true);
 								excelOperations.Merge(num4 + 1, 9, num4 + item.TnvList.Count, 9);
 								bool flagAdpCritMultiline = tnv.AdpCriteria.Contains('\n') || tnv.AdpCriteria.Contains('\r');
-								excelOperations.Format(num4 + 1, 9, flagAdpCritMultiline ? ExcelHorizontalAlignment.Left : ExcelHorizontalAlignment.Center, flagAdpCritMultiline ? ExcelVerticalAlignment.Top : ExcelVerticalAlignment.Center);
+								excelOperations.Format(num4 + 1, 9, flagAdpCritMultiline ? ExcelHorizontalAlignment.Left : ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
 							}
 							string text9 = "";
 							foreach (string item6 in tnv.MdpNoPaDop)
@@ -261,13 +262,16 @@ internal class Program
 							excelOperations.setVal(num5, 11, text11);
 							excelOperations.Format(num5, 11, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 							string text13 = "";
-							foreach (string item8 in tnv.AdpDop)
+							if (!mergeAdpDop)
 							{
-								string text14Line = ((item8 == tnv.AdpDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-								text13 = text13 + item8 + text14Line;
+								foreach (string item8 in tnv.AdpDop)
+								{
+									string text14Line = ((item8 == tnv.AdpDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
+									text13 = text13 + item8 + text14Line;
+								}
 							}
 							excelOperations.setVal(num5, 12, text13);
-							excelOperations.Format(num5, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+							excelOperations.Format(num5, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
 							num5++;
 						}
 						if (mergeAdpDop)
@@ -289,12 +293,12 @@ internal class Program
 									num8++;
 								}
 								int num9 = num8 - 1;
-								excelOperations.setVal(num7, 12, mergedAdpDop);
+								excelOperations.setVal(num7, 12, mergedAdpDop, wrap: true);
 								if (num9 > num7)
 								{
 									excelOperations.Merge(num7, 12, num9, 12);
 								}
-								excelOperations.Format(num7, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+								excelOperations.Format(num7, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
 								num7 = num8 + 1;
 							}
 						}
@@ -1050,7 +1054,9 @@ internal class Program
 		foreach (string key in order)
 		{
 			List<TNV> same = grouped[key];
-			result.Add(same.Count == 1 ? FinalizeSingleTnvPaNumbering(same[0]) : MergeTnvTemperatureGroup(same, groupLabel));
+			result.Add(same.Count == 1
+				? FinalizeSingleTnvPaNumbering(same[0])
+				: MergeTnvTemperatureGroup(same, groupLabel, factorSharedPa: IsVologdaArkhangelskSection(inputPath)));
 		}
 		return result;
 	}
@@ -1093,7 +1099,7 @@ internal class Program
 		return block;
 	}
 
-	private static TNV MergeTnvTemperatureGroup(List<TNV> rows, Func<int, string> groupLabel)
+	private static TNV MergeTnvTemperatureGroup(List<TNV> rows, Func<int, string> groupLabel, bool factorSharedPa)
 	{
 		TNV baseRow = rows[0];
 		TNV merged = new TNV
@@ -1109,25 +1115,8 @@ internal class Program
 			MdpPaCriteria = new List<MDP>(),
 			MdpPaDop = new List<string>()
 		};
-		int nextNumber = 1;
-		int groupIndex = 0;
-		bool multiGroup = rows.Count > 1;
 		foreach (TNV row in rows)
 		{
-			List<MDP> paFormulas = StripMinimumLabels(row.MdpPa);
-			List<MDP> paCriteria = StripMinimumLabels(row.MdpPaCriteria);
-			bool hasPa = HasMeaningfulMdpItems(paFormulas) || HasMeaningfulMdpItems(paCriteria);
-			if (hasPa)
-			{
-				groupIndex++;
-				if (multiGroup)
-				{
-					string label = groupLabel(groupIndex);
-					merged.MdpPa.Add(new MDP { Num = -1, Criteria = label });
-					merged.MdpPaCriteria.Add(new MDP { Num = -1, Criteria = label });
-				}
-				nextNumber = AppendRenumberedPaGroup(merged.MdpPa, merged.MdpPaCriteria, paFormulas, paCriteria, nextNumber);
-			}
 			if (CountMeaningfulMdp(row.MdpNoPA) > CountMeaningfulMdp(merged.MdpNoPA))
 			{
 				merged.MdpNoPA = new List<MDP>(row.MdpNoPA);
@@ -1160,7 +1149,193 @@ internal class Program
 				}
 			}
 		}
+
+		List<List<PaItemPair>> groups = new List<List<PaItemPair>>();
+		foreach (TNV row in rows)
+		{
+			List<MDP> paFormulas = StripMinimumLabels(row.MdpPa);
+			List<MDP> paCriteria = StripMinimumLabels(row.MdpPaCriteria);
+			List<PaItemPair> pairs = BuildPaItemPairs(paFormulas, paCriteria);
+			if (pairs.Count > 0)
+			{
+				groups.Add(pairs);
+			}
+		}
+		if (groups.Count == 0)
+		{
+			return merged;
+		}
+		if (factorSharedPa && groups.Count > 1)
+		{
+			FillFactoredPaGroups(merged, groups, groupLabel);
+		}
+		else
+		{
+			int nextNumber = 1;
+			for (int g = 0; g < groups.Count; g++)
+			{
+				if (groups.Count > 1)
+				{
+					string label = groupLabel(g + 1);
+					merged.MdpPa.Add(new MDP { Num = -1, Criteria = label });
+					merged.MdpPaCriteria.Add(new MDP { Num = -1, Criteria = label });
+				}
+				nextNumber = AppendPaPairsRenumbered(merged.MdpPa, merged.MdpPaCriteria, groups[g], nextNumber);
+			}
+		}
 		return merged;
+	}
+
+	private sealed class PaItemPair
+	{
+		public string Formula { get; set; } = "";
+
+		public string Criteria { get; set; } = "";
+	}
+
+	private static List<PaItemPair> BuildPaItemPairs(List<MDP> formulas, List<MDP> criteria)
+	{
+		Dictionary<int, string> criteriaByNum = new Dictionary<int, string>();
+		List<string> unnumberedCriteria = new List<string>();
+		foreach (MDP item in criteria ?? new List<MDP>())
+		{
+			if (!HasMeaningfulMdpText(item.Criteria) || IsPaGroupSeparator(item.Criteria))
+			{
+				continue;
+			}
+			if (item.Num >= 0)
+			{
+				if (!criteriaByNum.ContainsKey(item.Num))
+				{
+					criteriaByNum[item.Num] = item.Criteria;
+				}
+			}
+			else if (!item.Criteria.TrimStart().StartsWith("—", StringComparison.Ordinal))
+			{
+				unnumberedCriteria.Add(item.Criteria);
+			}
+		}
+		List<PaItemPair> pairs = new List<PaItemPair>();
+		foreach (MDP item in formulas ?? new List<MDP>())
+		{
+			if (!HasMeaningfulMdpText(item.Criteria) || IsPaGroupSeparator(item.Criteria))
+			{
+				continue;
+			}
+			if (item.Num < 0 && item.Criteria.TrimStart().StartsWith("—", StringComparison.Ordinal))
+			{
+				continue;
+			}
+			string crit = "";
+			if (item.Num >= 0)
+			{
+				criteriaByNum.TryGetValue(item.Num, out crit);
+			}
+			pairs.Add(new PaItemPair
+			{
+				Formula = item.Criteria,
+				Criteria = crit ?? ""
+			});
+		}
+		// Критерии без формулы (редко) — не теряем
+		HashSet<string> usedCrit = new HashSet<string>(pairs.Select((PaItemPair p) => NormalizePaText(p.Criteria)), StringComparer.OrdinalIgnoreCase);
+		foreach (KeyValuePair<int, string> kv in criteriaByNum.OrderBy((KeyValuePair<int, string> x) => x.Key))
+		{
+			if (pairs.Any((PaItemPair p) => p.Criteria == kv.Value))
+			{
+				continue;
+			}
+			if (usedCrit.Contains(NormalizePaText(kv.Value)))
+			{
+				continue;
+			}
+			pairs.Add(new PaItemPair { Formula = "", Criteria = kv.Value });
+		}
+		foreach (string crit in unnumberedCriteria)
+		{
+			if (!usedCrit.Contains(NormalizePaText(crit)))
+			{
+				pairs.Add(new PaItemPair { Formula = "", Criteria = crit });
+			}
+		}
+		return pairs;
+	}
+
+	private static void FillFactoredPaGroups(TNV merged, List<List<PaItemPair>> groups, Func<int, string> groupLabel)
+	{
+		// Независимые от уставки: одинаковая формула + одинаковый критерий во всех группах.
+		List<PaItemPair> shared = new List<PaItemPair>();
+		foreach (PaItemPair candidate in groups[0])
+		{
+			string fKey = NormalizePaText(candidate.Formula);
+			string cKey = NormalizePaText(candidate.Criteria);
+			if (string.IsNullOrEmpty(fKey) && string.IsNullOrEmpty(cKey))
+			{
+				continue;
+			}
+			bool inAll = groups.All((List<PaItemPair> g) => g.Any((PaItemPair p) =>
+				NormalizePaText(p.Formula) == fKey && NormalizePaText(p.Criteria) == cKey));
+			if (inAll)
+			{
+				shared.Add(candidate);
+			}
+		}
+		HashSet<string> sharedKeys = new HashSet<string>(
+			shared.Select((PaItemPair p) => PaPairKey(p)),
+			StringComparer.OrdinalIgnoreCase);
+
+		int next = 1;
+		next = AppendPaPairsRenumbered(merged.MdpPa, merged.MdpPaCriteria, shared, next);
+		for (int g = 0; g < groups.Count; g++)
+		{
+			List<PaItemPair> specific = groups[g]
+				.Where((PaItemPair p) => !sharedKeys.Contains(PaPairKey(p)))
+				.ToList();
+			if (specific.Count == 0)
+			{
+				continue;
+			}
+			string label = groupLabel(g + 1);
+			merged.MdpPa.Add(new MDP { Num = -1, Criteria = label });
+			merged.MdpPaCriteria.Add(new MDP { Num = -1, Criteria = label });
+			next = AppendPaPairsRenumbered(merged.MdpPa, merged.MdpPaCriteria, specific, next);
+		}
+	}
+
+	private static string PaPairKey(PaItemPair p)
+	{
+		return NormalizePaText(p.Formula) + "\u0001" + NormalizePaText(p.Criteria);
+	}
+
+	private static string NormalizePaText(string text)
+	{
+		string t = (text ?? "").Replace("_x000A_", " ").Trim();
+		t = Regex.Replace(t, "\\s+", " ");
+		return t;
+	}
+
+	private static int AppendPaPairsRenumbered(List<MDP> targetFormulas, List<MDP> targetCriteria, List<PaItemPair> pairs, int startNumber)
+	{
+		int next = startNumber;
+		foreach (PaItemPair pair in pairs ?? new List<PaItemPair>())
+		{
+			bool hasFormula = HasMeaningfulMdpText(pair.Formula);
+			bool hasCriteria = HasMeaningfulMdpText(pair.Criteria);
+			if (!hasFormula && !hasCriteria)
+			{
+				continue;
+			}
+			int num = next++;
+			if (hasFormula)
+			{
+				targetFormulas.Add(new MDP { Num = num, Criteria = pair.Formula });
+			}
+			if (hasCriteria)
+			{
+				targetCriteria.Add(new MDP { Num = num, Criteria = pair.Criteria });
+			}
+		}
+		return next;
 	}
 
 	private static List<MDP> StripMinimumLabels(List<MDP> items)
@@ -1926,19 +2101,34 @@ internal class Program
 
 	private static string GetSingleSchemeAdpDopValue(List<TNV> tnvList)
 	{
-		List<string> list = new List<string>();
+		if (tnvList == null || tnvList.Count == 0)
+		{
+			return "";
+		}
+		List<string> values = new List<string>();
 		foreach (TNV tnv in tnvList)
 		{
-			string text = string.Join(Environment.NewLine, tnv.AdpDop.Where((string x) => !string.IsNullOrWhiteSpace(x)).Select((string x) => x.Trim()));
-			if (!string.IsNullOrWhiteSpace(text))
+			foreach (string part in tnv.AdpDop ?? new List<string>())
 			{
-				list.Add(text);
+				string text = (part ?? "").Replace("_x000A_", " ").Trim();
+				if (!string.IsNullOrWhiteSpace(text))
+				{
+					values.Add(text);
+				}
 			}
 		}
-		List<string> list2 = list.Distinct(StringComparer.Ordinal).ToList();
-		if (list2.Count == 1)
+		if (values.Count == 0)
 		{
-			return list2[0];
+			return "";
+		}
+		List<string> unique = values
+			.Select(NormalizePaText)
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (unique.Count == 1)
+		{
+			// Вернуть исходный (с нормальными пробелами) первый экземпляр
+			return values.First((string v) => string.Equals(NormalizePaText(v), unique[0], StringComparison.OrdinalIgnoreCase));
 		}
 		return "";
 	}
