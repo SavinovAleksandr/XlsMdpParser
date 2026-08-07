@@ -46,6 +46,7 @@ internal class Program
 						{
 							list2.Add(ReadTnvBlock(excelOperations, columnMap, num10, num11, rowLabel: ""));
 						}
+						list2 = ConsolidateTnvByTemperature(list2, text2);
 						list.Add(new MdpBuilder
 						{
 							ShemeName = str,
@@ -1010,6 +1011,273 @@ internal class Program
 			j = eRow + 1;
 		}
 		return list;
+	}
+
+	/// <summary>
+	/// Одна строка на уникальную ТНВ: повторные блоки (группы АОПО/стабилизации)
+	/// склеиваются в «МДП с ПА» с разделителями групп и сквозной нумерацией.
+	/// Для Вологда–Архангельск (и ВР): Группа 1/2/3 → летняя / зимняя / весенне-осенняя уставка.
+	/// </summary>
+	private static List<TNV> ConsolidateTnvByTemperature(List<TNV> blocks, string inputPath = null)
+	{
+		Func<int, string> groupLabel = ResolvePaGroupLabelFormatter(inputPath);
+		if (blocks == null || blocks.Count <= 1)
+		{
+			if (blocks != null && blocks.Count == 1)
+			{
+				FinalizeSingleTnvPaNumbering(blocks[0]);
+			}
+			return blocks ?? new List<TNV>();
+		}
+		Dictionary<string, List<TNV>> grouped = new Dictionary<string, List<TNV>>(StringComparer.OrdinalIgnoreCase);
+		List<string> order = new List<string>();
+		for (int i = 0; i < blocks.Count; i++)
+		{
+			TNV block = blocks[i];
+			string key = NormalizeTnvKey(block.Tnv);
+			if (string.IsNullOrEmpty(key))
+			{
+				key = "__row_" + i;
+			}
+			if (!grouped.ContainsKey(key))
+			{
+				order.Add(key);
+				grouped[key] = new List<TNV>();
+			}
+			grouped[key].Add(block);
+		}
+		List<TNV> result = new List<TNV>();
+		foreach (string key in order)
+		{
+			List<TNV> same = grouped[key];
+			result.Add(same.Count == 1 ? FinalizeSingleTnvPaNumbering(same[0]) : MergeTnvTemperatureGroup(same, groupLabel));
+		}
+		return result;
+	}
+
+	private static Func<int, string> ResolvePaGroupLabelFormatter(string inputPath)
+	{
+		if (IsVologdaArkhangelskSection(inputPath))
+		{
+			return (int groupIndex) =>
+			{
+				string name = groupIndex switch
+				{
+					1 => "летняя уставка",
+					2 => "зимняя уставка",
+					3 => "весенне-осенняя уставка",
+					_ => "Группа " + groupIndex
+				};
+				return "— " + name + " —";
+			};
+		}
+		return (int groupIndex) => "— Группа " + groupIndex + " —";
+	}
+
+	private static bool IsVologdaArkhangelskSection(string inputPath)
+	{
+		string name = Path.GetFileNameWithoutExtension(inputPath ?? "");
+		string normalized = Regex.Replace((name ?? "").ToLowerInvariant().Replace('ё', 'е'), "[^a-zа-я0-9]+", "");
+		// «Вологда - Архангельск», «Вологда- Архангельск ВР»
+		return normalized.Contains("вологда") && normalized.Contains("архангельск");
+	}
+
+	private static string NormalizeTnvKey(string tnv)
+	{
+		return (tnv ?? "").Replace("_x000A_", " ").Trim();
+	}
+
+	private static TNV FinalizeSingleTnvPaNumbering(TNV block)
+	{
+		RenumberPaListsInPlace(block.MdpPa, block.MdpPaCriteria, startNumber: 1);
+		return block;
+	}
+
+	private static TNV MergeTnvTemperatureGroup(List<TNV> rows, Func<int, string> groupLabel)
+	{
+		TNV baseRow = rows[0];
+		TNV merged = new TNV
+		{
+			Tnv = baseRow.Tnv,
+			MdpNoPA = new List<MDP>(baseRow.MdpNoPA ?? new List<MDP>()),
+			MdpNoPaCriteria = new List<MDP>(baseRow.MdpNoPaCriteria ?? new List<MDP>()),
+			Adp = baseRow.Adp ?? "",
+			AdpCriteria = baseRow.AdpCriteria ?? "",
+			MdpNoPaDop = new List<string>(baseRow.MdpNoPaDop ?? new List<string>()),
+			AdpDop = new List<string>(baseRow.AdpDop ?? new List<string>()),
+			MdpPa = new List<MDP>(),
+			MdpPaCriteria = new List<MDP>(),
+			MdpPaDop = new List<string>()
+		};
+		int nextNumber = 1;
+		int groupIndex = 0;
+		bool multiGroup = rows.Count > 1;
+		foreach (TNV row in rows)
+		{
+			List<MDP> paFormulas = StripMinimumLabels(row.MdpPa);
+			List<MDP> paCriteria = StripMinimumLabels(row.MdpPaCriteria);
+			bool hasPa = HasMeaningfulMdpItems(paFormulas) || HasMeaningfulMdpItems(paCriteria);
+			if (hasPa)
+			{
+				groupIndex++;
+				if (multiGroup)
+				{
+					string label = groupLabel(groupIndex);
+					merged.MdpPa.Add(new MDP { Num = -1, Criteria = label });
+					merged.MdpPaCriteria.Add(new MDP { Num = -1, Criteria = label });
+				}
+				nextNumber = AppendRenumberedPaGroup(merged.MdpPa, merged.MdpPaCriteria, paFormulas, paCriteria, nextNumber);
+			}
+			if (CountMeaningfulMdp(row.MdpNoPA) > CountMeaningfulMdp(merged.MdpNoPA))
+			{
+				merged.MdpNoPA = new List<MDP>(row.MdpNoPA);
+				merged.MdpNoPaCriteria = new List<MDP>(row.MdpNoPaCriteria ?? new List<MDP>());
+			}
+			if (string.IsNullOrWhiteSpace(merged.Adp) && !IsDashOrEmpty(row.Adp))
+			{
+				merged.Adp = row.Adp;
+				merged.AdpCriteria = row.AdpCriteria;
+			}
+			foreach (string dop in row.MdpPaDop ?? new List<string>())
+			{
+				if (!string.IsNullOrWhiteSpace(dop) && !merged.MdpPaDop.Contains(dop))
+				{
+					merged.MdpPaDop.Add(dop);
+				}
+			}
+			foreach (string dop in row.MdpNoPaDop ?? new List<string>())
+			{
+				if (!string.IsNullOrWhiteSpace(dop) && !merged.MdpNoPaDop.Contains(dop))
+				{
+					merged.MdpNoPaDop.Add(dop);
+				}
+			}
+			foreach (string dop in row.AdpDop ?? new List<string>())
+			{
+				if (!string.IsNullOrWhiteSpace(dop) && !merged.AdpDop.Contains(dop))
+				{
+					merged.AdpDop.Add(dop);
+				}
+			}
+		}
+		return merged;
+	}
+
+	private static List<MDP> StripMinimumLabels(List<MDP> items)
+	{
+		if (items == null)
+		{
+			return new List<MDP>();
+		}
+		return items
+			.Where((MDP m) => m != null && !string.IsNullOrWhiteSpace(m.Criteria) && !m.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
+			.ToList();
+	}
+
+	private static List<MDP> StripGroupSeparators(List<MDP> items)
+	{
+		return items.Where((MDP m) => !IsPaGroupSeparator(m.Criteria)).ToList();
+	}
+
+	private static bool IsPaGroupSeparator(string text)
+	{
+		string t = (text ?? "").Trim();
+		if (!(t.StartsWith("—", StringComparison.Ordinal) || t.StartsWith("-", StringComparison.Ordinal)))
+		{
+			return false;
+		}
+		return t.IndexOf("Группа ", StringComparison.OrdinalIgnoreCase) >= 0
+			|| t.IndexOf("летняя уставка", StringComparison.OrdinalIgnoreCase) >= 0
+			|| t.IndexOf("зимняя уставка", StringComparison.OrdinalIgnoreCase) >= 0
+			|| t.IndexOf("весенне-осенняя уставка", StringComparison.OrdinalIgnoreCase) >= 0
+			|| t.IndexOf("весенне–осенняя уставка", StringComparison.OrdinalIgnoreCase) >= 0;
+	}
+
+	private static int CountMeaningfulMdp(List<MDP> items)
+	{
+		return items == null ? 0 : items.Count((MDP m) => HasMeaningfulMdpText(m.Criteria) && !IsPaGroupSeparator(m.Criteria));
+	}
+
+	private static int AppendRenumberedPaGroup(List<MDP> targetFormulas, List<MDP> targetCriteria, List<MDP> formulas, List<MDP> criteria, int startNumber)
+	{
+		Dictionary<int, int> mapping = new Dictionary<int, int>();
+		int next = startNumber;
+		foreach (MDP item in formulas ?? new List<MDP>())
+		{
+			if (!HasMeaningfulMdpText(item.Criteria))
+			{
+				continue;
+			}
+			if (item.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
+			{
+				continue;
+			}
+			if (IsPaGroupSeparator(item.Criteria) || (item.Num < 0 && item.Criteria.TrimStart().StartsWith("—", StringComparison.Ordinal)))
+			{
+				targetFormulas.Add(new MDP { Num = -1, Criteria = item.Criteria });
+				continue;
+			}
+			int newNum = next++;
+			if (item.Num >= 0)
+			{
+				mapping[item.Num] = newNum;
+			}
+			targetFormulas.Add(new MDP
+			{
+				Num = newNum,
+				Criteria = item.Criteria
+			});
+		}
+		foreach (MDP item in criteria ?? new List<MDP>())
+		{
+			if (!HasMeaningfulMdpText(item.Criteria))
+			{
+				continue;
+			}
+			if (item.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
+			{
+				continue;
+			}
+			if (IsPaGroupSeparator(item.Criteria) || (item.Num < 0 && item.Criteria.TrimStart().StartsWith("—", StringComparison.Ordinal)))
+			{
+				targetCriteria.Add(new MDP { Num = -1, Criteria = item.Criteria });
+				continue;
+			}
+			int newNum;
+			if (item.Num >= 0 && mapping.TryGetValue(item.Num, out newNum))
+			{
+				targetCriteria.Add(new MDP { Num = newNum, Criteria = item.Criteria });
+			}
+			else if (item.Num >= 0)
+			{
+				newNum = next++;
+				mapping[item.Num] = newNum;
+				targetCriteria.Add(new MDP { Num = newNum, Criteria = item.Criteria });
+			}
+			else
+			{
+				targetCriteria.Add(new MDP { Num = -1, Criteria = item.Criteria });
+			}
+		}
+		return next;
+	}
+
+	private static void RenumberPaListsInPlace(List<MDP> formulas, List<MDP> criteria, int startNumber)
+	{
+		if (formulas == null)
+		{
+			return;
+		}
+		List<MDP> tmpFormulas = new List<MDP>();
+		List<MDP> tmpCriteria = new List<MDP>();
+		AppendRenumberedPaGroup(tmpFormulas, tmpCriteria, formulas, criteria ?? new List<MDP>(), startNumber);
+		formulas.Clear();
+		formulas.AddRange(tmpFormulas);
+		if (criteria != null)
+		{
+			criteria.Clear();
+			criteria.AddRange(tmpCriteria);
+		}
 	}
 
 	private static TNV ReadTnvBlock(ExcelOperations ex, ColumnMap columnMap, int bRow, int eRow, string rowLabel)
