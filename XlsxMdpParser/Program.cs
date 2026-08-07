@@ -742,6 +742,10 @@ internal class Program
 		{
 			return false;
 		}
+		if (IsNotControlledPhrase(trimmed))
+		{
+			return false;
+		}
 		return true;
 	}
 
@@ -958,21 +962,21 @@ internal class Program
 				{
 					flags.HasMdpPa = true;
 				}
-				if ((tnv.MdpPaDop ?? new List<string>()).Any((string s) => !string.IsNullOrWhiteSpace(s)))
+				if ((tnv.MdpPaDop ?? new List<string>()).Any(HasMeaningfulDopText))
 				{
 					flags.HasMdpPa = true;
 					flags.HasCtrlMdpPa = true;
 				}
-				if (!IsDashOrEmpty(tnv.Adp))
+				if (!IsDashOrEmpty(tnv.Adp) && !IsNotControlledPhrase(tnv.Adp))
 				{
 					flags.HasAdp = true;
 				}
-				if ((tnv.AdpDop ?? new List<string>()).Any((string s) => !string.IsNullOrWhiteSpace(s)))
+				if ((tnv.AdpDop ?? new List<string>()).Any(HasMeaningfulDopText))
 				{
 					flags.HasAdp = true;
 					flags.HasCtrlAdp = true;
 				}
-				if ((tnv.MdpNoPaDop ?? new List<string>()).Any((string s) => !string.IsNullOrWhiteSpace(s)))
+				if ((tnv.MdpNoPaDop ?? new List<string>()).Any(HasMeaningfulDopText))
 				{
 					flags.HasCtrlMdpNoPa = true;
 				}
@@ -1580,7 +1584,7 @@ internal class Program
 		List<PaColumn> paValueCols = BuildPaColumnList(columnMap.MdpPaCol, columnMap.ExtraPaValueCols);
 		List<PaColumn> paCriteriaCols = BuildPaColumnList(columnMap.MdpPaCriteriaCol, columnMap.ExtraPaCriteriaCols);
 		List<PaColumn> paDopCols = BuildPaColumnList(columnMap.MdpPaDopCol, columnMap.ExtraPaDopCols);
-		return new TNV
+		TNV tnv = new TNV
 		{
 			Tnv = rowLabel ?? "",
 			MdpNoPA = (columnMap.MdpNoPaCol != -1) ? ReadLines(ex, bRow, eRow, columnMap.MdpNoPaCol, modify: true) : new List<MDP>(),
@@ -1593,6 +1597,128 @@ internal class Program
 			MdpPaDop = MergePaDopColumns(ex, bRow, eRow, paDopCols),
 			AdpDop = (columnMap.AdpDopCol != -1) ? ReadDopLines(ex, bRow, eRow, columnMap.AdpDopCol) : new List<string>()
 		};
+		return NormalizeNotControlledBlock(tnv);
+	}
+
+	/// <summary>
+	/// Широкий merge «Не контролируется» (как в Вологде) через getStrMerged
+	/// попадает во все колонки, включая контроль. Нормализуем в одну метку ТНВ.
+	/// </summary>
+	private static TNV NormalizeNotControlledBlock(TNV tnv)
+	{
+		if (tnv == null)
+		{
+			return tnv;
+		}
+		tnv.MdpNoPaDop = FilterDopLines(tnv.MdpNoPaDop);
+		tnv.MdpPaDop = FilterDopLines(tnv.MdpPaDop);
+		tnv.AdpDop = FilterDopLines(tnv.AdpDop);
+		if (IsNotControlledPhrase(tnv.Tnv) || BlockContentIsOnlyNotControlled(tnv))
+		{
+			tnv.Tnv = "Не контролируется";
+			tnv.MdpNoPA = new List<MDP>();
+			tnv.MdpPa = new List<MDP>();
+			tnv.MdpNoPaCriteria = new List<MDP>();
+			tnv.MdpPaCriteria = new List<MDP>();
+			tnv.Adp = "";
+			tnv.AdpCriteria = "";
+			tnv.MdpNoPaDop = new List<string>();
+			tnv.MdpPaDop = new List<string>();
+			tnv.AdpDop = new List<string>();
+		}
+		return tnv;
+	}
+
+	private static bool BlockContentIsOnlyNotControlled(TNV tnv)
+	{
+		List<string> texts = new List<string>();
+		void Add(string s)
+		{
+			if (!string.IsNullOrWhiteSpace(s))
+			{
+				texts.Add(s.Trim());
+			}
+		}
+		foreach (MDP m in (tnv.MdpNoPA ?? new List<MDP>())
+			.Concat(tnv.MdpPa ?? new List<MDP>())
+			.Concat(tnv.MdpNoPaCriteria ?? new List<MDP>())
+			.Concat(tnv.MdpPaCriteria ?? new List<MDP>()))
+		{
+			Add(m.Criteria);
+		}
+		Add(tnv.Adp);
+		Add(tnv.AdpCriteria);
+		foreach (string d in (tnv.MdpNoPaDop ?? new List<string>())
+			.Concat(tnv.MdpPaDop ?? new List<string>())
+			.Concat(tnv.AdpDop ?? new List<string>()))
+		{
+			Add(d);
+		}
+		if (texts.Count == 0)
+		{
+			return false;
+		}
+		bool sawNotControlled = texts.Any((string t) =>
+			IsNotControlledPhrase(t) || t.IndexOf("Не контролируется", StringComparison.OrdinalIgnoreCase) >= 0);
+		if (!sawNotControlled)
+		{
+			return false;
+		}
+		return !texts.Any(HasRealMdpOrControlContent);
+	}
+
+	private static bool HasRealMdpOrControlContent(string text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return false;
+		}
+		if (IsNotControlledPhrase(text.Trim()))
+		{
+			return false;
+		}
+		if (IsSectionLabelOnly(text))
+		{
+			return false;
+		}
+		return HasMeaningfulDopText(text) || (HasMeaningfulMdpText(text) && !ContainsOnlyNotControlledNoise(text));
+	}
+
+	private static bool IsSectionLabelOnly(string text)
+	{
+		string t = (text ?? "").Trim();
+		return t.Length >= 2 && t.StartsWith("—", StringComparison.Ordinal) && t.EndsWith("—", StringComparison.Ordinal);
+	}
+
+	private static bool ContainsOnlyNotControlledNoise(string text)
+	{
+		return !HasMeaningfulDopText(text);
+	}
+
+	private static List<string> FilterDopLines(List<string> lines)
+	{
+		if (lines == null || lines.Count == 0)
+		{
+			return new List<string>();
+		}
+		return lines.Where(HasMeaningfulDopText).ToList();
+	}
+
+	private static bool HasMeaningfulDopText(string text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return false;
+		}
+		string cleaned = (text ?? "").Replace("_x000A_", "\n");
+		cleaned = Regex.Replace(cleaned, @"—\s*[^—\r\n]+?\s*—", " ");
+		cleaned = Regex.Replace(cleaned, @"Не контролируется", " ", RegexOptions.IgnoreCase);
+		cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim();
+		if (string.IsNullOrWhiteSpace(cleaned) || IsDashOrEmpty(cleaned))
+		{
+			return false;
+		}
+		return true;
 	}
 
 	private static List<PaColumn> BuildPaColumnList(int primaryCol, List<PaColumn> extras)
@@ -1647,7 +1773,7 @@ internal class Program
 		}
 		foreach (PaColumn pa in cols)
 		{
-			List<string> lines = ReadDopLines(ex, bRow, eRow, pa.Col).Where((string s) => !string.IsNullOrWhiteSpace(s)).ToList();
+			List<string> lines = ReadDopLines(ex, bRow, eRow, pa.Col).Where(HasMeaningfulDopText).ToList();
 			if (lines.Count == 0)
 			{
 				continue;
