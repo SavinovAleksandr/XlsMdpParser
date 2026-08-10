@@ -47,6 +47,7 @@ internal class Program
 							list2.Add(ReadTnvBlock(excelOperations, columnMap, num10, num11, rowLabel: ""));
 						}
 						list2 = ConsolidateTnvByTemperature(list2, text2);
+						EnsureDdtnControlAnnotations(list2, str2, str);
 						list.Add(new MdpBuilder
 						{
 							ShemeName = str,
@@ -133,9 +134,7 @@ internal class Program
 						bool mergeAdpDop = !string.IsNullOrWhiteSpace(mergedAdpDop);
 						HashSet<int> hashSet = new HashSet<int>();
 						int tnvCount = Math.Max(1, item.TnvList.Count);
-						bool schemeHasMdpNoPa = item.TnvList.Any((TNV t) => HasMeaningfulMdpItems(t.MdpNoPA));
 						bool schemeHasAdp = item.TnvList.Any((TNV t) => !string.IsNullOrWhiteSpace(t.Adp) && !IsDashOrEmpty(t.Adp));
-						int dashNoPaCriteriaRow = -1;
 						excelOperations.setVal(num5, 1, item.ShemeNum);
 						excelOperations.Merge(num5, 1, num5 + tnvCount - 1, 1);
 						excelOperations.Format(num5, 1, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
@@ -174,7 +173,14 @@ internal class Program
 								});
 							}
 							List<MDP> list11 = tnv.MdpNoPaCriteria.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria) && !IsDashOrEmpty(mDP.Criteria)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
-							WriteColoredMdpBlocks(excelOperations, num5, 4, list4.Concat(list5).ToList(), list11, criteriaColorMap);
+							if (outCols.HasMdpNoPa)
+							{
+								WriteColoredMdpBlocks(excelOperations, num5, 4, list4.Concat(list5).ToList(), list11, criteriaColorMap);
+							}
+							else
+							{
+								excelOperations.setVal(num5, 4, "");
+							}
 							List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria)).ToList();
 							List<MDP> list8 = list7.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
 							List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -218,19 +224,14 @@ internal class Program
 								// Top: иначе короткий текст в высоком merge визуально «прилипает» к средней ТНВ (+15).
 								excelOperations.Format(num4 + 1, 6, flagAdpMultiline ? ExcelHorizontalAlignment.Left : ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
 							}
-							if (!schemeHasMdpNoPa)
-							{
-								if (dashNoPaCriteriaRow < 0)
-								{
-									dashNoPaCriteriaRow = num5;
-									excelOperations.setVal(num5, 7, "—", wrap: false);
-									excelOperations.Format(num5, 7, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-								}
-							}
-							else
+							if (outCols.HasMdpNoPa)
 							{
 								string text5 = WriteColoredCriteriaBlocks(excelOperations, num5, 7, list11, criteriaColorMap);
 								excelOperations.CellComment(num5, 4, text5);
+							}
+							else
+							{
+								excelOperations.setVal(num5, 7, "");
 							}
 							if (outCols.HasMdpPa)
 							{
@@ -310,11 +311,6 @@ internal class Program
 								excelOperations.Format(num7, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
 								num7 = num8 + 1;
 							}
-						}
-						if (dashNoPaCriteriaRow > 0 && num5 - 1 > dashNoPaCriteriaRow)
-						{
-							excelOperations.Merge(dashNoPaCriteriaRow, 7, num5 - 1, 7);
-							excelOperations.Format(dashNoPaCriteriaRow, 7, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 						}
 						int rowHeight2 = EstimateMergedRowHeight(item.ShemeName, array[1], num12);
 						if (num5 - 1 >= num6)
@@ -932,6 +928,8 @@ internal class Program
 
 	private sealed class OutputColumnFlags
 	{
+		public bool HasMdpNoPa { get; set; }
+
 		public bool HasMdpPa { get; set; }
 
 		public bool HasAdp { get; set; }
@@ -957,6 +955,12 @@ internal class Program
 				if (IsNotControlledPhrase(tnv.Tnv))
 				{
 					continue;
+				}
+				if (HasMeaningfulMdpItems(tnv.MdpNoPA))
+				{
+					// Только по значениям «МДП без ПА». Критерии без значений (типично АРПМ:
+					// дубль «Исключение…» в колонке «без ПА») не удерживают столбец видимым.
+					flags.HasMdpNoPa = true;
 				}
 				if (HasMeaningfulMdpItems(tnv.MdpPa) || HasMeaningfulMdpItems(tnv.MdpPaCriteria))
 				{
@@ -987,6 +991,11 @@ internal class Program
 
 	private static void HideEmptyOutputColumns(ExcelOperations excelOperations, OutputColumnFlags flags)
 	{
+		if (!flags.HasMdpNoPa)
+		{
+			excelOperations.HideColumn(4);
+			excelOperations.HideColumn(7);
+		}
 		if (!flags.HasMdpPa)
 		{
 			excelOperations.HideColumn(5);
@@ -1719,6 +1728,145 @@ internal class Program
 			return false;
 		}
 		return true;
+	}
+
+	/// <summary>
+	/// Если в критериях МДП/МДП с ПА/АДП есть «ДДТН …», в соответствующем
+	/// контроле доп. параметров должна быть приписка (ДДТН/ДТН того же объекта).
+	/// При отсутствии — дописываем «ДДТН …» и пишем предупреждение в консоль.
+	/// </summary>
+	private static void EnsureDdtnControlAnnotations(List<TNV> tnvList, string schemeNum, string schemeName)
+	{
+		if (tnvList == null)
+		{
+			return;
+		}
+		string schemeLabel = ((schemeNum ?? "").Trim() + " " + (schemeName ?? "").Trim()).Trim();
+		foreach (TNV tnv in tnvList)
+		{
+			if (tnv == null || IsNotControlledPhrase(tnv.Tnv))
+			{
+				continue;
+			}
+			tnv.MdpNoPaDop = tnv.MdpNoPaDop ?? new List<string>();
+			tnv.MdpPaDop = tnv.MdpPaDop ?? new List<string>();
+			tnv.AdpDop = tnv.AdpDop ?? new List<string>();
+			EnsureDdtnControlForCriteria(
+				(tnv.MdpNoPaCriteria ?? new List<MDP>()).Select((MDP m) => m.Criteria),
+				tnv.MdpNoPaDop,
+				schemeLabel,
+				tnv.Tnv,
+				"МДП без ПА");
+			EnsureDdtnControlForCriteria(
+				(tnv.MdpPaCriteria ?? new List<MDP>()).Select((MDP m) => m.Criteria),
+				tnv.MdpPaDop,
+				schemeLabel,
+				tnv.Tnv,
+				"МДП с ПА");
+			EnsureDdtnControlForCriteria(
+				new string[1] { tnv.AdpCriteria },
+				tnv.AdpDop,
+				schemeLabel,
+				tnv.Tnv,
+				"АДП");
+		}
+	}
+
+	private static void EnsureDdtnControlForCriteria(
+		IEnumerable<string> criteriaTexts,
+		List<string> controlLines,
+		string schemeLabel,
+		string tnvLabel,
+		string channelName)
+	{
+		List<string> objects = new List<string>();
+		foreach (string text in criteriaTexts ?? Array.Empty<string>())
+		{
+			foreach (string obj in ExtractDdtnObjects(text))
+			{
+				if (!objects.Any((string x) => string.Equals(NormalizeThermalObjectKey(x), NormalizeThermalObjectKey(obj), StringComparison.Ordinal)))
+				{
+					objects.Add(obj);
+				}
+			}
+		}
+		foreach (string obj in objects)
+		{
+			if (ControlCoversThermalObject(controlLines, obj))
+			{
+				continue;
+			}
+			string annotation = "ДДТН " + obj;
+			controlLines.Add(annotation);
+			string tnvPart = string.IsNullOrWhiteSpace(tnvLabel) ? "" : (", ТНВ/АРПМ «" + tnvLabel.Trim() + "»");
+			Console.WriteLine(
+				"Предупреждение: схема «" + schemeLabel + "»" + tnvPart
+				+ ": в критерии «" + channelName + "» есть ДДТН «" + obj
+				+ "», в контроле доп. параметров не было приписки — добавлено «" + annotation + "».");
+		}
+	}
+
+	private static List<string> ExtractDdtnObjects(string text)
+	{
+		List<string> list = new List<string>();
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return list;
+		}
+		string normalized = text.Replace("_x000A_", "\n");
+		foreach (Match match in Regex.Matches(normalized, @"(?i)ДДТН\s+([^\r\n]+)"))
+		{
+			string obj = match.Groups[1].Value.Trim().TrimEnd('.', ';', ',');
+			obj = Regex.Replace(obj, @"\s+", " ").Trim();
+			if (!string.IsNullOrWhiteSpace(obj) && !IsSectionLabelOnly(obj) && !IsNotControlledPhrase(obj))
+			{
+				list.Add(obj);
+			}
+		}
+		return list;
+	}
+
+	private static bool ControlCoversThermalObject(IEnumerable<string> controlLines, string obj)
+	{
+		string want = NormalizeThermalObjectKey(obj);
+		if (string.IsNullOrEmpty(want))
+		{
+			return false;
+		}
+		foreach (string line in controlLines ?? Array.Empty<string>())
+		{
+			if (string.IsNullOrWhiteSpace(line))
+			{
+				continue;
+			}
+			string have = NormalizeThermalObjectKey(StripThermalControlPrefix(line));
+			if (string.IsNullOrEmpty(have))
+			{
+				have = NormalizeThermalObjectKey(line);
+			}
+			if (have.Contains(want) || want.Contains(have))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static string StripThermalControlPrefix(string text)
+	{
+		string t = (text ?? "").Replace("_x000A_", "\n").Trim();
+		t = Regex.Replace(t, @"^\s*\d+\)\s*", "");
+		t = Regex.Replace(t, @"^(?i)(?:ДДТН|ДТН)\s+", "");
+		return t.Trim();
+	}
+
+	private static string NormalizeThermalObjectKey(string text)
+	{
+		string t = NormalizePaText(text ?? "").ToLowerInvariant();
+		t = Regex.Replace(t, @"^(?:\d+\)\s*)?(?:ддтн|дтн)\s+", "", RegexOptions.IgnoreCase);
+		t = t.Replace("–", "-").Replace("—", "-").Replace("−", "-");
+		t = Regex.Replace(t, @"\s+", "");
+		return t;
 	}
 
 	private static List<PaColumn> BuildPaColumnList(int primaryCol, List<PaColumn> extras)
