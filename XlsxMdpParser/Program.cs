@@ -107,13 +107,17 @@ internal class Program
 					HideEmptyOutputColumns(excelOperations, outCols);
 					excelOperations.FormatCells(1, 1, 2, array.Count(), bold: true, italic: false, Color.PowderBlue.ToArgb());
 					int num4 = 3;
-					Dictionary<string, int> dictionary = new Dictionary<string, int>();
+					Dictionary<string, int> dictionary = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 					List<int> notControlledRows = new List<int>();
 					Dictionary<string, Color> criteriaColorMap = BuildCriteriaColorMap(list);
 					foreach (MdpBuilder item in list)
 					{
-						string key = item.ShemeNum.Trim(new char[1] { ' ' });
-						if (!dictionary.ContainsKey(key))
+						string key = (item.ShemeNum ?? "").Trim().Replace(',', '.');
+						while (key.EndsWith(".", StringComparison.Ordinal))
+						{
+							key = key.Substring(0, key.Length - 1).TrimEnd();
+						}
+						if (key.Length > 0 && !dictionary.ContainsKey(key))
 						{
 							dictionary.Add(key, num4);
 						}
@@ -163,8 +167,8 @@ internal class Program
 							excelOperations.setVal(num5, 3, tnv.Tnv);
 							excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
 							List<MDP> list3 = tnv.MdpNoPA.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria)).ToList();
-							List<MDP> list4 = list3.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
-							List<MDP> list5 = list3.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
+							List<MDP> list4 = list3.Where((MDP mDP) => IsMinimalFromHeader(mDP.Criteria)).ToList();
+							List<MDP> list5 = list3.Where((MDP mDP) => !IsMinimalFromHeader(mDP.Criteria)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
 							if (list5.Count <= 1)
 							{
 								list4.Clear();
@@ -174,7 +178,7 @@ internal class Program
 								list4.Add(new MDP
 								{
 									Num = -1,
-									Criteria = "Минимальное из:"
+									Criteria = MinimalFromHeader
 								});
 							}
 							List<MDP> list11 = tnv.MdpNoPaCriteria.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria) && !IsDashOrEmpty(mDP.Criteria)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
@@ -187,8 +191,8 @@ internal class Program
 								excelOperations.setVal(num5, 4, "");
 							}
 							List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria)).ToList();
-							List<MDP> list8 = list7.Where((MDP mDP) => mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
-							List<MDP> list9 = list7.Where((MDP mDP) => !mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase)).ToList();
+							List<MDP> list8 = list7.Where((MDP mDP) => IsMinimalFromHeader(mDP.Criteria)).ToList();
+							List<MDP> list9 = list7.Where((MDP mDP) => !IsMinimalFromHeader(mDP.Criteria)).ToList();
 							bool hasPaSections = list9.Any((MDP m) => m.Criteria.StartsWith("—", StringComparison.Ordinal) || m.Criteria.StartsWith("[", StringComparison.Ordinal));
 							if (!hasPaSections)
 							{
@@ -203,7 +207,7 @@ internal class Program
 								list8.Add(new MDP
 								{
 									Num = -1,
-									Criteria = "Минимальное из:"
+									Criteria = MinimalFromHeader
 								});
 							}
 							List<MDP> list12 = tnv.MdpPaCriteria.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria) && !IsDashOrEmpty(mDP.Criteria)).ToList();
@@ -722,6 +726,15 @@ internal class Program
 		return true;
 	}
 
+	private const string MinimalFromHeader = "Минимальный из:";
+
+	private static bool IsMinimalFromHeader(string text)
+	{
+		string t = (text ?? "").Trim();
+		return t.StartsWith("Минимальный из", StringComparison.OrdinalIgnoreCase)
+			|| t.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase);
+	}
+
 	private static bool IsDashOrEmpty(string text)
 	{
 		if (string.IsNullOrWhiteSpace(text))
@@ -1102,29 +1115,90 @@ internal class Program
 			list.Add(ReadTnvBlock(ex, columnMap, schemeStart, schemeEnd, rowLabel: ""));
 			return list;
 		}
-		for (int j = schemeStart; j <= schemeEnd; )
+		// Сначала границы по маркеру ТНВ/АРПМ; затем отдаём хвостовой «Минимальный из:»
+		// следующей температуре (в исходнике преамбула часто стоит выше ячейки ТНВ).
+		List<int> markers = new List<int>();
+		for (int row = schemeStart; row <= schemeEnd; row++)
 		{
-			while (j <= schemeEnd && string.IsNullOrWhiteSpace(ex.getStr(j, markerCol)))
+			if (!string.IsNullOrWhiteSpace(ex.getStr(row, markerCol)))
 			{
-				j++;
+				markers.Add(row);
 			}
-			if (j > schemeEnd)
+		}
+		if (markers.Count == 0)
+		{
+			list.Add(ReadTnvBlock(ex, columnMap, schemeStart, schemeEnd, rowLabel: ""));
+			return list;
+		}
+		List<int> starts = new List<int>(markers.Count);
+		List<int> ends = new List<int>(markers.Count);
+		for (int i = 0; i < markers.Count; i++)
+		{
+			starts.Add(markers[i]);
+			ends.Add(i + 1 < markers.Count ? markers[i + 1] - 1 : schemeEnd);
+		}
+		for (int i = 0; i < starts.Count - 1; i++)
+		{
+			int split = FindTrailingMinRestartRow(ex, columnMap, starts[i], ends[i]);
+			if (split >= starts[i] && split <= ends[i] && split < markers[i + 1])
 			{
-				break;
+				ends[i] = split - 1;
+				starts[i + 1] = Math.Min(starts[i + 1], split);
 			}
-			int bRow = j;
-			int eRow = j;
-			while (eRow < schemeEnd && string.IsNullOrWhiteSpace(ex.getStr(eRow + 1, markerCol)))
-			{
-				eRow++;
-			}
+		}
+		// Строки схемы до первой ТНВ (часто «Минимальный из:») — в первый блок.
+		starts[0] = Math.Min(starts[0], schemeStart);
+		for (int i = 0; i < markers.Count; i++)
+		{
+			int bRow = starts[i];
+			int eRow = Math.Max(bRow, ends[i]);
 			string label = columnMap.HasTnv
-				? ReadLine(ex, bRow, eRow, columnMap.TnvCol)
-				: ReadLine(ex, bRow, eRow, columnMap.ArpmCol);
+				? ReadLine(ex, markers[i], markers[i], columnMap.TnvCol)
+				: ReadLine(ex, markers[i], markers[i], columnMap.ArpmCol);
+			if (string.IsNullOrWhiteSpace(label))
+			{
+				label = columnMap.HasTnv
+					? ReadLine(ex, bRow, eRow, columnMap.TnvCol)
+					: ReadLine(ex, bRow, eRow, columnMap.ArpmCol);
+			}
 			list.Add(ReadTnvBlock(ex, columnMap, bRow, eRow, label));
-			j = eRow + 1;
 		}
 		return list;
+	}
+
+	/// <summary>
+	/// Если после уже прочитанных пунктов МДП снова идёт «Минимальный из:» —
+	/// это преамбула следующей ТНВ, стоящая выше её маркера. Вернуть номер этой строки.
+	/// </summary>
+	private static int FindTrailingMinRestartRow(ExcelOperations ex, ColumnMap columnMap, int bRow, int eRow)
+	{
+		int mdpCol = columnMap.MdpNoPaCol;
+		if (mdpCol <= 0 || eRow <= bRow)
+		{
+			return -1;
+		}
+		bool sawItems = false;
+		for (int row = bRow; row <= eRow; row++)
+		{
+			string text = (ex.getStrMerged(row, mdpCol) ?? "").Replace("_x000A_", " ").Trim();
+			if (string.IsNullOrWhiteSpace(text))
+			{
+				continue;
+			}
+			if (IsMinimalFromHeader(text))
+			{
+				if (sawItems)
+				{
+					return row;
+				}
+				continue;
+			}
+			if (Regex.IsMatch(text, @"^\d+\)") || HasMeaningfulMdpText(text))
+			{
+				sawItems = true;
+			}
+		}
+		return -1;
 	}
 
 	/// <summary>
@@ -1455,7 +1529,7 @@ internal class Program
 			return new List<MDP>();
 		}
 		return items
-			.Where((MDP m) => m != null && !string.IsNullOrWhiteSpace(m.Criteria) && !m.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
+			.Where((MDP m) => m != null && !string.IsNullOrWhiteSpace(m.Criteria) && !IsMinimalFromHeader(m.Criteria))
 			.ToList();
 	}
 
@@ -1493,7 +1567,7 @@ internal class Program
 			{
 				continue;
 			}
-			if (item.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
+			if (IsMinimalFromHeader(item.Criteria))
 			{
 				continue;
 			}
@@ -1519,7 +1593,7 @@ internal class Program
 			{
 				continue;
 			}
-			if (item.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
+			if (IsMinimalFromHeader(item.Criteria))
 			{
 				continue;
 			}
@@ -1687,7 +1761,22 @@ internal class Program
 		{
 			return new List<string>();
 		}
-		return lines.Where(HasMeaningfulDopText).ToList();
+		List<string> result = new List<string>();
+		HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		foreach (string line in lines)
+		{
+			if (!HasMeaningfulDopText(line))
+			{
+				continue;
+			}
+			string key = NormalizePaText(line);
+			if (string.IsNullOrEmpty(key) || !seen.Add(key))
+			{
+				continue;
+			}
+			result.Add(line);
+		}
+		return result;
 	}
 
 	private static bool HasMeaningfulDopText(string text)
@@ -1944,12 +2033,12 @@ internal class Program
 			{
 				continue;
 			}
-			if (text.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
+			if (IsMinimalFromHeader(text))
 			{
 				list.Add(new MDP
 				{
 					Num = -1,
-					Criteria = text
+					Criteria = MinimalFromHeader
 				});
 				continue;
 			}
@@ -1993,13 +2082,21 @@ internal class Program
 		{
 			return list;
 		}
+		HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		for (int i = bRow; i <= eRow; i++)
 		{
 			string text = ex.getStrMerged(i, col).Trim(new char[1] { ' ' }).Replace("_x000A_", Environment.NewLine);
-			if (text != "" && text != " ")
+			if (text == "" || text == " ")
 			{
-				list.Add(text);
+				continue;
 			}
+			// getStrMerged на каждой строке вертикального merge возвращает один и тот же текст.
+			string key = NormalizePaText(text);
+			if (string.IsNullOrEmpty(key) || !seen.Add(key))
+			{
+				continue;
+			}
+			list.Add(text);
 		}
 		return list;
 	}
@@ -2480,8 +2577,9 @@ internal class Program
 	}
 
 	/// <summary>
-	/// Если во всех ТНВ схемы (кроме «Не контролируется») один и тот же текст контроля —
+	/// Если во всех ТНВ схемы (кроме «Не контролируется») один и тот же непустой текст контроля —
 	/// вернуть его для вертикального объединения; иначе пусто (писать построчно).
+	/// Пустые температуры не «добиваем» общей фразой — только когда фраза реально у всех.
 	/// </summary>
 	private static string GetSingleSchemeDopValue(List<TNV> tnvList, Func<TNV, List<string>> selector)
 	{
@@ -2498,12 +2596,9 @@ internal class Program
 			}
 			string joined = JoinDopLines(selector(tnv));
 			joined = (joined ?? "").Replace("_x000A_", " ").Trim();
-			if (!string.IsNullOrWhiteSpace(joined))
-			{
-				perTnv.Add(joined);
-			}
+			perTnv.Add(joined);
 		}
-		if (perTnv.Count == 0)
+		if (perTnv.Count == 0 || perTnv.Any(string.IsNullOrWhiteSpace))
 		{
 			return "";
 		}
@@ -2634,7 +2729,7 @@ internal class Program
 			string text = (!flag) ? (mDP.Criteria + Environment.NewLine) : mDP.Criteria;
 			string prefix = (mDP.Num != -1) ? $"{mDP.Num}) " : "";
 			Color color = Color.Black;
-			if (mDP.Criteria.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
+			if (IsMinimalFromHeader(mDP.Criteria))
 			{
 				color = Color.Black;
 			}

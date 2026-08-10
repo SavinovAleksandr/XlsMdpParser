@@ -120,16 +120,26 @@ public class ExcelOperations
 		ExcelRichText excelRichText2 = excelRange.RichText.Add(prefix);
 		excelRichText2.Color = textColor;
 		excelRichText2.Bold = false;
-		if (val.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
+		if (val.StartsWith("Минимальный из", StringComparison.OrdinalIgnoreCase)
+			|| val.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase))
 		{
-			string text = "Минимальное из:";
+			const string text = "Минимальный из:";
 			ExcelRichText excelRichText = excelRange.RichText.Add(text);
 			excelRichText.Color = Color.Green;
 			excelRichText.Bold = true;
-			string text2 = val.Substring(Math.Min(text.Length, val.Length));
-			if (text2.Length > 0)
+			// Срезаем любой из старых/новых заголовков, остаток пишем обычным цветом.
+			string remainder = val;
+			foreach (string header in new[] { "Минимальный из:", "Минимальное из:", "Минимальный из", "Минимальное из" })
 			{
-				ExcelRichText excelRichText3 = excelRange.RichText.Add(text2);
+				if (remainder.StartsWith(header, StringComparison.OrdinalIgnoreCase))
+				{
+					remainder = remainder.Substring(header.Length);
+					break;
+				}
+			}
+			if (remainder.Length > 0)
+			{
+				ExcelRichText excelRichText3 = excelRange.RichText.Add(remainder);
 				excelRichText3.Color = textColor;
 				excelRichText3.Bold = false;
 			}
@@ -854,6 +864,19 @@ public class ExcelOperations
 		{
 			return;
 		}
+		Dictionary<string, int> map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+		if (schemeRows != null)
+		{
+			foreach (KeyValuePair<string, int> kv in schemeRows)
+			{
+				string key = NormalizeSchemeNumKey(kv.Key);
+				if (key.Length == 0 || map.ContainsKey(key))
+				{
+					continue;
+				}
+				map[key] = kv.Value;
+			}
+		}
 		int num = 0;
 		for (int i = 1; i <= excelWorksheet.Dimension.End.Row; i++)
 		{
@@ -875,19 +898,32 @@ public class ExcelOperations
 			{
 				continue;
 			}
-			Match match = Regex.Match(text2, "^(\\d+)\\.");
+			// 1. / 21.1. / 14.3. — полный номер схемы, не только целая часть до первой точки.
+			Match match = Regex.Match(text2, @"^(\d+(?:\.\d+)*)\.");
 			if (!match.Success)
 			{
 				continue;
 			}
-			string key = match.Groups[1].Value;
-			if (!schemeRows.TryGetValue(key, out var value))
+			string key = NormalizeSchemeNumKey(match.Groups[1].Value);
+			ExcelRange excelRange = excelWorksheet.Cells[j, 1];
+			if (!map.TryGetValue(key, out var value))
 			{
+				// Не оставляем битую ссылку со старого листа.
+				excelRange.Hyperlink = null;
 				continue;
 			}
-			ExcelRange excelRange = excelWorksheet.Cells[j, 1];
 			excelRange.Hyperlink = new ExcelHyperLink($"'{targetSheetName}'!B{value}", text2);
 		}
+	}
+
+	private static string NormalizeSchemeNumKey(string raw)
+	{
+		string key = (raw ?? "").Trim().Replace(',', '.');
+		while (key.EndsWith(".", StringComparison.Ordinal))
+		{
+			key = key.Substring(0, key.Length - 1).TrimEnd();
+		}
+		return key;
 	}
 
 	public void ConfigureSheetForPrint(string sheetName, bool repeatTopTwoRows = false)
