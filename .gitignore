@@ -9,3 +9,7 @@ obj/
 *.xlsm
 *.xlsb
 ~$*.xls*
+__pycache__/
+*.pyc
+.pytest_cache/
+python/Исходные файлы/
