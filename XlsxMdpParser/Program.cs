@@ -130,7 +130,12 @@ internal class Program
 						excelOperations.Height(num4, Math.Max(20, rowHeight));
 						int num5 = num4 + 1;
 						int num6 = num5;
-						string mergedAdpDop = outCols.HasCtrlAdp ? GetSingleSchemeAdpDopValue(item.TnvList) : "";
+						// Если контроль доп.параметров одинаков для всех ТНВ схемы — пишем один раз и объединяем (как в исходнике).
+						string mergedMdpNoPaDop = outCols.HasCtrlMdpNoPa ? GetSingleSchemeDopValue(item.TnvList, (TNV t) => t.MdpNoPaDop) : "";
+						string mergedMdpPaDop = outCols.HasCtrlMdpPa ? GetSingleSchemeDopValue(item.TnvList, (TNV t) => t.MdpPaDop) : "";
+						string mergedAdpDop = outCols.HasCtrlAdp ? GetSingleSchemeDopValue(item.TnvList, (TNV t) => t.AdpDop) : "";
+						bool mergeMdpNoPaDop = !string.IsNullOrWhiteSpace(mergedMdpNoPaDop);
+						bool mergeMdpPaDop = !string.IsNullOrWhiteSpace(mergedMdpPaDop);
 						bool mergeAdpDop = !string.IsNullOrWhiteSpace(mergedAdpDop);
 						HashSet<int> hashSet = new HashSet<int>();
 						int tnvCount = Math.Max(1, item.TnvList.Count);
@@ -250,67 +255,39 @@ internal class Program
 								excelOperations.Format(num4 + 1, 9, flagAdpCritMultiline ? ExcelHorizontalAlignment.Left : ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
 							}
 							string text9 = "";
-							if (outCols.HasCtrlMdpNoPa)
+							if (outCols.HasCtrlMdpNoPa && !mergeMdpNoPaDop)
 							{
-								foreach (string item6 in tnv.MdpNoPaDop)
-								{
-									string text10 = ((item6 == tnv.MdpNoPaDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-									text9 = text9 + item6 + text10;
-								}
+								text9 = JoinDopLines(tnv.MdpNoPaDop);
 							}
 							excelOperations.setVal(num5, 10, text9);
-							excelOperations.Format(num5, 10, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+							excelOperations.Format(num5, 10, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
 							string text11 = "";
-							if (outCols.HasCtrlMdpPa)
+							if (outCols.HasCtrlMdpPa && !mergeMdpPaDop)
 							{
-								foreach (string item7 in tnv.MdpPaDop)
-								{
-									string text12 = ((item7 == tnv.MdpPaDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-									text11 = text11 + item7 + text12;
-								}
+								text11 = JoinDopLines(tnv.MdpPaDop);
 							}
 							excelOperations.setVal(num5, 11, text11);
-							excelOperations.Format(num5, 11, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
+							excelOperations.Format(num5, 11, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
 							string text13 = "";
-							if (!mergeAdpDop)
+							if (outCols.HasCtrlAdp && !mergeAdpDop)
 							{
-								foreach (string item8 in tnv.AdpDop)
-								{
-									string text14Line = ((item8 == tnv.AdpDop.LastOrDefault()) ? "" : (Environment.NewLine ?? ""));
-									text13 = text13 + item8 + text14Line;
-								}
+								text13 = JoinDopLines(tnv.AdpDop);
 							}
 							excelOperations.setVal(num5, 12, text13);
 							excelOperations.Format(num5, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
 							num5++;
 						}
+						if (mergeMdpNoPaDop)
+						{
+							ApplySchemeDopMerge(excelOperations, num6, num5 - 1, 10, mergedMdpNoPaDop, hashSet);
+						}
+						if (mergeMdpPaDop)
+						{
+							ApplySchemeDopMerge(excelOperations, num6, num5 - 1, 11, mergedMdpPaDop, hashSet);
+						}
 						if (mergeAdpDop)
 						{
-							int num7 = num6;
-							while (num7 <= num5 - 1)
-							{
-								while (num7 <= num5 - 1 && hashSet.Contains(num7))
-								{
-									num7++;
-								}
-								if (num7 > num5 - 1)
-								{
-									break;
-								}
-								int num8 = num7;
-								while (num8 <= num5 - 1 && !hashSet.Contains(num8))
-								{
-									num8++;
-								}
-								int num9 = num8 - 1;
-								excelOperations.setVal(num7, 12, mergedAdpDop, wrap: true);
-								if (num9 > num7)
-								{
-									excelOperations.Merge(num7, 12, num9, 12);
-								}
-								excelOperations.Format(num7, 12, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
-								num7 = num8 + 1;
-							}
+							ApplySchemeDopMerge(excelOperations, num6, num5 - 1, 12, mergedAdpDop, hashSet);
 						}
 						int rowHeight2 = EstimateMergedRowHeight(item.ShemeName, array[1], num12);
 						if (num5 - 1 >= num6)
@@ -2493,38 +2470,85 @@ internal class Program
 		}
 	}
 
-	private static string GetSingleSchemeAdpDopValue(List<TNV> tnvList)
+	private static string JoinDopLines(List<string> lines)
 	{
-		if (tnvList == null || tnvList.Count == 0)
+		if (lines == null || lines.Count == 0)
 		{
 			return "";
 		}
-		List<string> values = new List<string>();
+		return string.Join(Environment.NewLine, lines.Where((string s) => !string.IsNullOrWhiteSpace(s)));
+	}
+
+	/// <summary>
+	/// Если во всех ТНВ схемы (кроме «Не контролируется») один и тот же текст контроля —
+	/// вернуть его для вертикального объединения; иначе пусто (писать построчно).
+	/// </summary>
+	private static string GetSingleSchemeDopValue(List<TNV> tnvList, Func<TNV, List<string>> selector)
+	{
+		if (tnvList == null || tnvList.Count == 0 || selector == null)
+		{
+			return "";
+		}
+		List<string> perTnv = new List<string>();
 		foreach (TNV tnv in tnvList)
 		{
-			foreach (string part in tnv.AdpDop ?? new List<string>())
+			if (IsNotControlledPhrase(tnv.Tnv))
 			{
-				string text = (part ?? "").Replace("_x000A_", " ").Trim();
-				if (!string.IsNullOrWhiteSpace(text))
-				{
-					values.Add(text);
-				}
+				continue;
+			}
+			string joined = JoinDopLines(selector(tnv));
+			joined = (joined ?? "").Replace("_x000A_", " ").Trim();
+			if (!string.IsNullOrWhiteSpace(joined))
+			{
+				perTnv.Add(joined);
 			}
 		}
-		if (values.Count == 0)
+		if (perTnv.Count == 0)
 		{
 			return "";
 		}
-		List<string> unique = values
+		List<string> unique = perTnv
 			.Select(NormalizePaText)
 			.Distinct(StringComparer.OrdinalIgnoreCase)
 			.ToList();
-		if (unique.Count == 1)
+		if (unique.Count != 1)
 		{
-			// Вернуть исходный (с нормальными пробелами) первый экземпляр
-			return values.First((string v) => string.Equals(NormalizePaText(v), unique[0], StringComparison.OrdinalIgnoreCase));
+			return "";
 		}
-		return "";
+		return perTnv.First((string v) => string.Equals(NormalizePaText(v), unique[0], StringComparison.OrdinalIgnoreCase));
+	}
+
+	private static void ApplySchemeDopMerge(ExcelOperations ex, int startRow, int endRow, int col, string value, HashSet<int> skipRows)
+	{
+		if (ex == null || string.IsNullOrWhiteSpace(value) || endRow < startRow)
+		{
+			return;
+		}
+		int row = startRow;
+		while (row <= endRow)
+		{
+			while (row <= endRow && skipRows != null && skipRows.Contains(row))
+			{
+				row++;
+			}
+			if (row > endRow)
+			{
+				break;
+			}
+			int blockEnd = row;
+			while (blockEnd <= endRow && (skipRows == null || !skipRows.Contains(blockEnd)))
+			{
+				blockEnd++;
+			}
+			int last = blockEnd - 1;
+			ex.setVal(row, col, value, wrap: true);
+			if (last > row)
+			{
+				ex.Merge(row, col, last, col);
+			}
+			ex.Format(row, col, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Top);
+			row = blockEnd;
+		}
 	}
 
 	private static bool IsNotControlledPhrase(string text)
