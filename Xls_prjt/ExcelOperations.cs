@@ -63,6 +63,20 @@ public class ExcelOperations
 		sheet.Name = toName;
 	}
 
+	/// <summary>
+	/// Порядок вкладок: сначала сводка, затем ремонтные схемы, остальные (в т.ч. old) после них.
+	/// </summary>
+	public void EnsureSummaryThenRepairSheetOrder(string summarySheetName, string repairSheetName)
+	{
+		ExcelWorksheets sheets = _excel.Workbook.Worksheets;
+		if (sheets[summarySheetName] == null || sheets[repairSheetName] == null)
+		{
+			return;
+		}
+		sheets.MoveToStart(summarySheetName);
+		sheets.MoveAfter(repairSheetName, summarySheetName);
+	}
+
 	public void ActivateSheet(string sheetName)
 	{
 		ExcelWorksheet sheet = _excel.Workbook.Worksheets[sheetName];
@@ -906,13 +920,18 @@ public class ExcelOperations
 			}
 			string key = NormalizeSchemeNumKey(match.Groups[1].Value);
 			ExcelRange excelRange = excelWorksheet.Cells[j, 1];
+			// Сброс старой ссылки (после RenameSheet она может указывать на «old» / неверную строку).
+			excelRange.Hyperlink = null;
 			if (!map.TryGetValue(key, out var value))
 			{
-				// Не оставляем битую ссылку со старого листа.
-				excelRange.Hyperlink = null;
 				continue;
 			}
-			excelRange.Hyperlink = new ExcelHyperLink($"'{targetSheetName}'!B{value}", text2);
+			// Колонка A — номер схемы (не в горизонтальном merge B:L), переход стабильнее.
+			// Display оставляем = текст схемы: при Display=null EPPlus подменяет Value адресом ссылки.
+			excelRange.Hyperlink = new ExcelHyperLink($"'{targetSheetName}'!A{value}", text2);
+			excelRange.Value = text2;
+			excelRange.Style.Font.UnderLine = true;
+			excelRange.Style.Font.Color.SetColor(Color.FromArgb(5, 99, 193));
 		}
 	}
 

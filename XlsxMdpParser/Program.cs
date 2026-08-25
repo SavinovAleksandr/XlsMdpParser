@@ -134,10 +134,17 @@ internal class Program
 						excelOperations.Height(num4, Math.Max(20, rowHeight));
 						int num5 = num4 + 1;
 						int num6 = num5;
-						// Если контроль доп.параметров одинаков для всех ТНВ схемы — пишем один раз и объединяем (как в исходнике).
-						string mergedMdpNoPaDop = outCols.HasCtrlMdpNoPa ? GetSingleSchemeDopValue(item.TnvList, (TNV t) => t.MdpNoPaDop) : "";
-						string mergedMdpPaDop = outCols.HasCtrlMdpPa ? GetSingleSchemeDopValue(item.TnvList, (TNV t) => t.MdpPaDop) : "";
-						string mergedAdpDop = outCols.HasCtrlAdp ? GetSingleSchemeDopValue(item.TnvList, (TNV t) => t.AdpDop) : "";
+						// МДП: объединяем только если фраза есть у всех ТНВ (иначе построчно).
+						// АДП: как значение АДП — часто одна ячейка/merge на схему; пустые ТНВ не мешают объединению.
+						string mergedMdpNoPaDop = outCols.HasCtrlMdpNoPa
+							? GetSingleSchemeDopValue(item.TnvList, (TNV t) => t.MdpNoPaDop, requireAllTempsFilled: true)
+							: "";
+						string mergedMdpPaDop = outCols.HasCtrlMdpPa
+							? GetSingleSchemeDopValue(item.TnvList, (TNV t) => t.MdpPaDop, requireAllTempsFilled: true)
+							: "";
+						string mergedAdpDop = outCols.HasCtrlAdp
+							? GetSingleSchemeDopValue(item.TnvList, (TNV t) => t.AdpDop, requireAllTempsFilled: false)
+							: "";
 						bool mergeMdpNoPaDop = !string.IsNullOrWhiteSpace(mergedMdpNoPaDop);
 						bool mergeMdpPaDop = !string.IsNullOrWhiteSpace(mergedMdpPaDop);
 						bool mergeAdpDop = !string.IsNullOrWhiteSpace(mergedAdpDop);
@@ -321,7 +328,6 @@ internal class Program
 					excelOperations.AutoFitSheetRowsByContent(outputSheetName, 3, 15, 1.0, new int[11] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 });
 					excelOperations.Borders(1, 1, num4 - 1, array.Count());
 					excelOperations.GroupRowsPosition();
-					excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", outputSheetName, dictionary);
 					if (!string.IsNullOrWhiteSpace(summaryB1Text))
 					{
 						// Справа (C1), в том же стиле, что исходный блок «УТВЕРЖДАЮ» (Говорун).
@@ -338,6 +344,10 @@ internal class Program
 						excelOperations.HideColumn(3);
 					}
 					HideEmptyOutputColumns(excelOperations, outCols);
+					// 1) сводка, 2) ремонтные схемы, далее old и пр.
+					excelOperations.EnsureSummaryThenRepairSheetOrder("Обшая информация о сечении", outputSheetName);
+					// Гиперссылки — в самом конце, чтобы никакой последующий шаг их не сбросил.
+					excelOperations.UpdateSummarySheetHyperlinks("Обшая информация о сечении", outputSheetName, dictionary);
 					if (!Directory.Exists(inputJob.OutputDirectory))
 					{
 						Directory.CreateDirectory(inputJob.OutputDirectory);
@@ -530,6 +540,21 @@ internal class Program
 		int tnvCol = headerScan.FindFirst((HeaderCell h) => h.All.Contains("тнв"), -1);
 		int arpmCol = headerScan.FindFirst((HeaderCell h) => h.All.Contains("арпм") && !h.HasMdpNoPa && !h.HasMdpPa && !h.HasAdp && !h.IsCriteriaGroup && !h.IsDopGroup, -1);
 		int mdpNoPaCol = headerScan.FindFirst((HeaderCell h) => h.HasMdpNoPa && !h.IsCriteriaGroup && !h.IsDopGroup, 5);
+		if (tnvCol == -1)
+		{
+			// Печора–Инта и аналоги: вместо «ТНВ» стоит «Условие 2» (температуры в той же роли).
+			tnvCol = headerScan.FindFirst((HeaderCell h) =>
+				(h.All.Contains("условие") || h.All.Contains("температур") || h.All.Contains("тусловие"))
+				&& !h.HasMdpNoPa && !h.HasMdpPa && !h.HasAdp && !h.IsAopo
+				&& !h.IsCriteriaGroup && !h.IsDopGroup
+				&& !h.All.Contains("схемасети")
+				&& h.Col > schemeNameCol
+				&& h.Col < mdpNoPaCol, -1);
+		}
+		if (tnvCol == -1)
+		{
+			tnvCol = FindTemperatureLikeColumn(ex, schemeNameCol, mdpNoPaCol, bodyStartRow: 4);
+		}
 		int mdpPaCol = headerScan.FindFirst((HeaderCell h) => h.HasMdpPa && !h.IsCriteriaGroup && !h.IsDopGroup, -1);
 		// АОПО в зоне МДП (после ТНВ / рядом с «МДП без ПА»). Короткие «АОПО В-Х» до ТНВ — не МДП с ПА.
 		int aopoZoneStart = Math.Max(tnvCol > 0 ? tnvCol + 1 : 0, mdpNoPaCol > 0 ? mdpNoPaCol : 0);
@@ -1932,7 +1957,92 @@ internal class Program
 		t = Regex.Replace(t, @"^(?:\d+\)\s*)?(?:ддтн|дтн)\s+", "", RegexOptions.IgnoreCase);
 		t = t.Replace("–", "-").Replace("—", "-").Replace("−", "-");
 		t = Regex.Replace(t, @"\s+", "");
+		// «АТ-1, АТ-2» / «АТ-2 или АТ-1» / «АТ-1 и АТ-2» → одинаковый ключ.
+		for (int i = 0; i < 8; i++)
+		{
+			string next = Regex.Replace(t, @"(ат-\d+)(?:или|и|,)+(ат-\d+)", "$1,$2");
+			if (next == t)
+			{
+				break;
+			}
+			t = next;
+		}
+		List<string> atTokens = Regex.Matches(t, @"ат-\d+")
+			.Cast<Match>()
+			.Select((Match m) => m.Value)
+			.Distinct()
+			.OrderBy((string s) => s, StringComparer.Ordinal)
+			.ToList();
+		if (atTokens.Count > 0)
+		{
+			string rest = Regex.Replace(t, @"ат-\d+", "");
+			rest = Regex.Replace(rest, @",+", ",");
+			rest = rest.Trim(',');
+			t = string.Join(",", atTokens) + "|" + rest;
+		}
 		return t;
+	}
+
+	/// <summary>
+	/// Если заголовок ТНВ нестандартный — ищем колонку между схемой и МДП
+	/// с температурами/условиями (−20, 30 и менее, …).
+	/// </summary>
+	private static int FindTemperatureLikeColumn(ExcelOperations ex, int schemeNameCol, int mdpNoPaCol, int bodyStartRow)
+	{
+		if (ex == null || mdpNoPaCol <= 0)
+		{
+			return -1;
+		}
+		int from = Math.Max(schemeNameCol + 1, 1);
+		int to = mdpNoPaCol - 1;
+		int bestCol = -1;
+		int bestScore = 0;
+		int lastRow = Math.Min(ex.LastColumnRow(), bodyStartRow + 80);
+		for (int col = from; col <= to; col++)
+		{
+			int score = 0;
+			for (int row = bodyStartRow; row <= lastRow; row++)
+			{
+				string text = (ex.getStr(row, col) ?? "").Replace("_x000A_", " ").Trim();
+				if (string.IsNullOrWhiteSpace(text))
+				{
+					continue;
+				}
+				if (IsNotControlledPhrase(text))
+				{
+					score += 2;
+					continue;
+				}
+				if (LooksLikeTemperatureLabel(text))
+				{
+					score += 3;
+				}
+			}
+			if (score > bestScore)
+			{
+				bestScore = score;
+				bestCol = col;
+			}
+		}
+		return bestScore >= 3 ? bestCol : -1;
+	}
+
+	private static bool LooksLikeTemperatureLabel(string text)
+	{
+		string t = (text ?? "").Replace("_x000A_", " ").Trim();
+		if (string.IsNullOrWhiteSpace(t) || t.Length > 40)
+		{
+			return false;
+		}
+		if (Regex.IsMatch(t, @"^[+\-]?\d+([.,]\d+)?(\s*(и\s+(менее|более)|°\s*C|°C|C))?$", RegexOptions.IgnoreCase))
+		{
+			return true;
+		}
+		if (Regex.IsMatch(t, @"^[+\-]?\d+\s*\.\.\s*[+\-]?\d+", RegexOptions.IgnoreCase))
+		{
+			return true;
+		}
+		return false;
 	}
 
 	private static List<PaColumn> BuildPaColumnList(int primaryCol, List<PaColumn> extras)
@@ -2577,11 +2687,13 @@ internal class Program
 	}
 
 	/// <summary>
-	/// Если во всех ТНВ схемы (кроме «Не контролируется») один и тот же непустой текст контроля —
-	/// вернуть его для вертикального объединения; иначе пусто (писать построчно).
-	/// Пустые температуры не «добиваем» общей фразой — только когда фраза реально у всех.
+	/// Общий текст контроля доп.параметров в рамках схемы для вертикального объединения.
+	/// requireAllTempsFilled=true (МДП): фраза должна быть у каждой ТНВ, иначе построчно.
+	/// requireAllTempsFilled=false (АДП): достаточно одного уникального непустого значения
+	/// (в исходнике часто одна ячейка/merge на всю схему, как у столбца АДП).
+	/// Разные тексты по температурам — всегда построчно.
 	/// </summary>
-	private static string GetSingleSchemeDopValue(List<TNV> tnvList, Func<TNV, List<string>> selector)
+	private static string GetSingleSchemeDopValue(List<TNV> tnvList, Func<TNV, List<string>> selector, bool requireAllTempsFilled)
 	{
 		if (tnvList == null || tnvList.Count == 0 || selector == null)
 		{
@@ -2596,9 +2708,20 @@ internal class Program
 			}
 			string joined = JoinDopLines(selector(tnv));
 			joined = (joined ?? "").Replace("_x000A_", " ").Trim();
-			perTnv.Add(joined);
+			if (requireAllTempsFilled)
+			{
+				perTnv.Add(joined);
+			}
+			else if (!string.IsNullOrWhiteSpace(joined))
+			{
+				perTnv.Add(joined);
+			}
 		}
-		if (perTnv.Count == 0 || perTnv.Any(string.IsNullOrWhiteSpace))
+		if (perTnv.Count == 0)
+		{
+			return "";
+		}
+		if (requireAllTempsFilled && perTnv.Any(string.IsNullOrWhiteSpace))
 		{
 			return "";
 		}
