@@ -387,6 +387,8 @@ internal class Program
 		}
 	}
 
+	private const string OutputSubfolderName = "macros.nasi";
+
 	private static List<InputJob> BuildInputJobs(string[] args)
 	{
 		List<string> inputPaths = GetInputPaths(args);
@@ -395,16 +397,17 @@ internal class Program
 		{
 			if (File.Exists(inputPath))
 			{
+				string sourceDir = Path.GetDirectoryName(inputPath) ?? Directory.GetCurrentDirectory();
 				list.Add(new InputJob
 				{
 					InputPath = inputPath,
-					OutputDirectory = (Path.GetDirectoryName(inputPath) ?? Directory.GetCurrentDirectory())
+					OutputDirectory = ResolveOutputDirectory(sourceDir)
 				});
 				continue;
 			}
 			if (Directory.Exists(inputPath))
 			{
-				string text = Path.Combine(inputPath, "_корр");
+				string text = ResolveOutputDirectory(inputPath);
 				foreach (string item in Directory.GetFiles(inputPath, "*.xlsx", SearchOption.TopDirectoryOnly).OrderBy((string p) => p, StringComparer.OrdinalIgnoreCase))
 				{
 					if (!Path.GetFileName(item).StartsWith("~$", StringComparison.OrdinalIgnoreCase))
@@ -419,6 +422,21 @@ internal class Program
 			}
 		}
 		return list;
+	}
+
+	/// <summary>
+	/// Выход всегда в подпапку macros.nasi рядом с исходниками
+	/// (если уже указали macros.nasi — пишем прямо в неё).
+	/// </summary>
+	private static string ResolveOutputDirectory(string sourceDirectory)
+	{
+		string full = Path.GetFullPath(sourceDirectory);
+		string name = Path.GetFileName(full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+		if (name.Equals(OutputSubfolderName, StringComparison.OrdinalIgnoreCase))
+		{
+			return full;
+		}
+		return Path.Combine(full, OutputSubfolderName);
 	}
 
 	private static List<string> GetInputPaths(string[] args)
