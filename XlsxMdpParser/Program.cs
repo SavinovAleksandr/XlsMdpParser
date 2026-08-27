@@ -173,50 +173,19 @@ internal class Program
 							}
 							excelOperations.setVal(num5, 3, tnv.Tnv);
 							excelOperations.Format(num5, 3, ExcelHorizontalAlignment.Center, ExcelVerticalAlignment.Center);
-							List<MDP> list3 = tnv.MdpNoPA.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria)).ToList();
-							List<MDP> list4 = list3.Where((MDP mDP) => IsMinimalFromHeader(mDP.Criteria)).ToList();
-							List<MDP> list5 = list3.Where((MDP mDP) => !IsMinimalFromHeader(mDP.Criteria)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
-							if (list5.Count <= 1)
-							{
-								list4.Clear();
-							}
-							else if (list4.Count == 0)
-							{
-								list4.Add(new MDP
-								{
-									Num = -1,
-									Criteria = MinimalFromHeader
-								});
-							}
+							List<MDP> list5 = ApplyMinimalFromPolicy(tnv.MdpNoPA, sortByNumber: true);
 							List<MDP> list11 = tnv.MdpNoPaCriteria.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria) && !IsDashOrEmpty(mDP.Criteria)).OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
 							if (outCols.HasMdpNoPa)
 							{
-								WriteColoredMdpBlocks(excelOperations, num5, 4, list4.Concat(list5).ToList(), list11, criteriaColorMap);
+								WriteColoredMdpBlocks(excelOperations, num5, 4, list5, list11, criteriaColorMap);
 							}
 							else
 							{
 								excelOperations.setVal(num5, 4, "");
 							}
-							List<MDP> list7 = tnv.MdpPa.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria)).ToList();
-							List<MDP> list8 = list7.Where((MDP mDP) => IsMinimalFromHeader(mDP.Criteria)).ToList();
-							List<MDP> list9 = list7.Where((MDP mDP) => !IsMinimalFromHeader(mDP.Criteria)).ToList();
+							List<MDP> list9 = tnv.MdpPa.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria)).ToList();
 							bool hasPaSections = list9.Any((MDP m) => m.Criteria.StartsWith("—", StringComparison.Ordinal) || m.Criteria.StartsWith("[", StringComparison.Ordinal));
-							if (!hasPaSections)
-							{
-								list9 = list9.OrderBy((MDP mDP) => (mDP.Num >= 0) ? mDP.Num : int.MaxValue).ToList();
-							}
-							if (list9.Count(m => !m.Criteria.StartsWith("—", StringComparison.Ordinal) && !m.Criteria.StartsWith("[", StringComparison.Ordinal)) <= 1)
-							{
-								list8.Clear();
-							}
-							else if (list8.Count == 0)
-							{
-								list8.Add(new MDP
-								{
-									Num = -1,
-									Criteria = MinimalFromHeader
-								});
-							}
+							list9 = ApplyMinimalFromPolicy(list9, sortByNumber: !hasPaSections);
 							List<MDP> list12 = tnv.MdpPaCriteria.Where((MDP mDP) => HasMeaningfulMdpText(mDP.Criteria) && !IsDashOrEmpty(mDP.Criteria)).ToList();
 							bool hasPaCritSections = list12.Any((MDP m) => m.Criteria.StartsWith("—", StringComparison.Ordinal) || m.Criteria.StartsWith("[", StringComparison.Ordinal));
 							if (!hasPaCritSections)
@@ -225,7 +194,7 @@ internal class Program
 							}
 							if (outCols.HasMdpPa)
 							{
-								WriteColoredMdpBlocks(excelOperations, num5, 5, list8.Concat(list9).ToList(), list12, criteriaColorMap);
+								WriteColoredMdpBlocks(excelOperations, num5, 5, list9, list12, criteriaColorMap);
 							}
 							else
 							{
@@ -776,6 +745,80 @@ internal class Program
 		string t = (text ?? "").Trim();
 		return t.StartsWith("Минимальный из", StringComparison.OrdinalIgnoreCase)
 			|| t.StartsWith("Минимальное из", StringComparison.OrdinalIgnoreCase);
+	}
+
+	/// <summary>
+	/// «Минимальный из:» только если критериев больше одного.
+	/// При одном критерии — без заголовка и без префикса «N)», только текст критерия.
+	/// </summary>
+	private static List<MDP> ApplyMinimalFromPolicy(IEnumerable<MDP> items, bool sortByNumber)
+	{
+		List<MDP> source = (items ?? Enumerable.Empty<MDP>())
+			.Where((MDP m) => m != null && HasMeaningfulMdpText(m.Criteria))
+			.ToList();
+		List<MDP> body = source.Where((MDP m) => !IsMinimalFromHeader(m.Criteria)).ToList();
+		if (sortByNumber)
+		{
+			body = body
+				.OrderBy((MDP m) => IsPaGroupSeparator(m.Criteria) || m.Criteria.TrimStart().StartsWith("—", StringComparison.Ordinal) || m.Criteria.TrimStart().StartsWith("[", StringComparison.Ordinal)
+					? int.MaxValue - 1
+					: ((m.Num >= 0) ? m.Num : int.MaxValue))
+				.ToList();
+		}
+		int meaningfulCount = body.Count((MDP m) =>
+			!IsPaGroupSeparator(m.Criteria)
+			&& !m.Criteria.TrimStart().StartsWith("—", StringComparison.Ordinal)
+			&& !m.Criteria.TrimStart().StartsWith("[", StringComparison.Ordinal));
+		if (meaningfulCount <= 1)
+		{
+			// Один критерий: без «Минимальный из:» и без «1) ».
+			List<MDP> single = new List<MDP>();
+			foreach (MDP m in body)
+			{
+				if (IsPaGroupSeparator(m.Criteria)
+					|| m.Criteria.TrimStart().StartsWith("—", StringComparison.Ordinal)
+					|| m.Criteria.TrimStart().StartsWith("[", StringComparison.Ordinal))
+				{
+					continue;
+				}
+				single.Add(new MDP
+				{
+					Num = -1,
+					Criteria = StripMinimalFromPrefix(m.Criteria)
+				});
+			}
+			return single;
+		}
+		List<MDP> result = new List<MDP>
+		{
+			new MDP { Num = -1, Criteria = MinimalFromHeader }
+		};
+		foreach (MDP m in body)
+		{
+			result.Add(new MDP
+			{
+				Num = m.Num,
+				Criteria = StripMinimalFromPrefix(m.Criteria)
+			});
+		}
+		return result;
+	}
+
+	private static string StripMinimalFromPrefix(string text)
+	{
+		string t = (text ?? "").Trim();
+		if (!IsMinimalFromHeader(t))
+		{
+			return t;
+		}
+		foreach (string header in new[] { "Минимальный из:", "Минимальное из:", "Минимальный из", "Минимальное из" })
+		{
+			if (t.StartsWith(header, StringComparison.OrdinalIgnoreCase))
+			{
+				return t.Substring(header.Length).TrimStart('\r', '\n', ' ', '\t');
+			}
+		}
+		return t;
 	}
 
 	private static bool IsDashOrEmpty(string text)
@@ -2163,11 +2206,20 @@ internal class Program
 			}
 			if (IsMinimalFromHeader(text))
 			{
+				// «Минимальный из:» + пункты в одной ячейке — разделяем.
+				string remainder = StripMinimalFromPrefix(text);
 				list.Add(new MDP
 				{
 					Num = -1,
 					Criteria = MinimalFromHeader
 				});
+				if (!string.IsNullOrWhiteSpace(remainder))
+				{
+					foreach (MDP part in ParseMdpTextParts(remainder, modify))
+					{
+						list.Add(part);
+					}
+				}
 				continue;
 			}
 			Match match = Regex.Match(text, "^(-?\\d+)\\)\\s*(.*)$", RegexOptions.Singleline);
@@ -2198,6 +2250,74 @@ internal class Program
 					Num = -1,
 					Criteria = criteria
 				});
+			}
+		}
+		return list;
+	}
+
+	/// <summary>
+	/// Разбор хвоста ячейки после «Минимальный из:» (одна или несколько строк/пунктов).
+	/// </summary>
+	private static List<MDP> ParseMdpTextParts(string text, bool modify)
+	{
+		List<MDP> list = new List<MDP>();
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return list;
+		}
+		string[] lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+		int? currentNum = null;
+		List<string> currentLines = new List<string>();
+		void Flush()
+		{
+			if (currentLines.Count == 0 && currentNum == null)
+			{
+				return;
+			}
+			string body = string.Join(Environment.NewLine, currentLines).Trim();
+			string criteria = ReorderNumberedBlocks(modify ? CellModifyString(body) : body);
+			if (!HasMeaningfulMdpText(criteria))
+			{
+				currentLines.Clear();
+				currentNum = null;
+				return;
+			}
+			list.Add(new MDP
+			{
+				Num = currentNum ?? -1,
+				Criteria = criteria
+			});
+			currentLines.Clear();
+			currentNum = null;
+		}
+		foreach (string rawLine in lines)
+		{
+			string line = (rawLine ?? "").Trim();
+			if (line.Length == 0)
+			{
+				continue;
+			}
+			Match match = Regex.Match(line, "^(-?\\d+)\\)\\s*(.*)$");
+			if (match.Success)
+			{
+				Flush();
+				currentNum = Convert.ToInt32(match.Groups[1].Value);
+				string rest = match.Groups[2].Value.Trim();
+				if (rest.Length > 0)
+				{
+					currentLines.Add(rest);
+				}
+				continue;
+			}
+			currentLines.Add(line);
+		}
+		Flush();
+		if (list.Count == 0)
+		{
+			string criteria = ReorderNumberedBlocks(modify ? CellModifyString(text) : text);
+			if (HasMeaningfulMdpText(criteria))
+			{
+				list.Add(new MDP { Num = -1, Criteria = criteria });
 			}
 		}
 		return list;
